@@ -31,6 +31,8 @@ export default function SignInPage() {
       // Clear demo mode before OAuth
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('demoMode')
+        document.cookie = 'demo-access=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+        document.cookie = 'demo-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
       }
       
       const result = await signIn('github', { 
@@ -55,26 +57,33 @@ export default function SignInPage() {
       setIsLoading(true)
       setError('')
       
-      // Set demo mode flag with timestamp for security
       if (typeof window !== 'undefined') {
+        // Set demo session data
         const demoSession = {
           mode: 'demo',
           timestamp: Date.now(),
           expires: Date.now() + (2 * 60 * 60 * 1000), // 2 hours demo session
           user: {
-            name: 'Demo User',
+            name: 'Demo Fleet Manager',
             email: 'demo@approvedlogistics.co.ke',
-            role: 'Fleet Manager'
+            role: 'Fleet Manager',
+            id: 'demo-user'
           }
         }
+        
+        // Set session storage
         sessionStorage.setItem('demoMode', JSON.stringify(demoSession))
         localStorage.setItem('clientDemo', 'active')
+        
+        // Set cookies for middleware (CRITICAL FIX)
+        document.cookie = 'demo-access=true; path=/; max-age=7200; SameSite=Lax'
+        document.cookie = `demo-session=${encodeURIComponent(JSON.stringify(demoSession))}; path=/; max-age=7200; SameSite=Lax`
+        
+        // Add slight delay for better UX and cookie setting
+        setTimeout(() => {
+          window.location.replace('/dashboard')
+        }, 500)
       }
-      
-      // Add slight delay for better UX
-      setTimeout(() => {
-        window.location.href = '/dashboard'
-      }, 1000)
     } catch (err) {
       setError('Demo login failed.')
       setIsLoading(false)
