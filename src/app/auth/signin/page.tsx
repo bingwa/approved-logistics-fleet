@@ -1,145 +1,150 @@
 // src/app/auth/signin/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { signIn, getSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { signIn, getProviders } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Building2, Lock, Mail, Eye, EyeOff } from 'lucide-react'
+import { Building2, Github, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Suspense } from 'react'
 
-export default function SignInPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
+function SignInContent() {
+  const [providers, setProviders] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError('')
-
-    try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      })
-
-      if (result?.error) {
-        setError('Invalid email or password')
-      } else {
-        // Get session to check user role
-        const session = await getSession()
-        if (session) {
-          router.push('/dashboard')
-        }
+  useEffect(() => {
+    const setAuthProviders = async () => {
+      try {
+        const res = await getProviders()
+        setProviders(res)
+      } catch (err) {
+        setError('Failed to load authentication providers')
       }
-    } catch (error) {
-      setError('An error occurred. Please try again.')
-    } finally {
+    }
+    setAuthProviders()
+  }, [])
+
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      setError('Authentication failed. Please try again.')
+    }
+  }, [searchParams])
+
+  const handleGitHubSignIn = async () => {
+    try {
+      setIsLoading(true)
+      setError('')
+      await signIn('github', { callbackUrl })
+    } catch (err) {
+      setError('Failed to sign in. Please try again.')
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
         className="w-full max-w-md"
       >
-        <Card className="shadow-2xl border-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl">
-          <CardHeader className="text-center space-y-4 pb-8">
-            <div className="flex justify-center">
-              <div className="p-4 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg">
-                <Building2 className="h-10 w-10 text-white" />
-              </div>
+        <Card className="bg-card border-border shadow-lg">
+          <CardHeader className="text-center space-y-4">
+            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+              <Building2 className="w-8 h-8 text-primary" />
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                Welcome Back
+              <CardTitle className="text-2xl font-bold text-foreground">
+                Fleet Management System
               </CardTitle>
-              <CardDescription className="text-slate-600 dark:text-slate-400">
-                Sign in to Approved Logistics Fleet Management
+              <CardDescription className="text-muted-foreground mt-2">
+                Sign in to access your fleet dashboard
               </CardDescription>
             </div>
           </CardHeader>
+          
+          <CardContent className="space-y-6">
+            {error && (
+              <Alert className="border-destructive/50 text-destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    placeholder="admin@approvedlogistics.co.ke"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
+            <div className="space-y-4">
               <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg"
+                onClick={handleGitHubSignIn}
+                disabled={isLoading || !providers?.github}
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                size="lg"
               >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    <Github className="mr-2 h-4 w-4" />
+                    Sign in with GitHub
+                  </>
+                )}
               </Button>
-            </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Demo Accounts:
-              </p>
-              <div className="mt-2 text-xs space-y-1">
-                <p><strong>Admin:</strong> admin@approvedlogistics.co.ke / admin123</p>
-                <p><strong>Manager:</strong> manager@approvedlogistics.co.ke / manager123</p>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">
+                  Secure OAuth authentication via GitHub
+                </p>
+              </div>
+            </div>
+
+            {/* Information Section */}
+            <div className="border-t border-border pt-6">
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h3 className="font-semibold text-foreground mb-2">
+                  Access Information
+                </h3>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>• Use your GitHub account to sign in</p>
+                  <p>• Secure OAuth 2.0 authentication</p>
+                  <p>• Access fleet management dashboard</p>
+                  <p>• Manage fuel, maintenance, and compliance records</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Demo Notice */}
+            <div className="text-center">
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 text-xs font-medium">
+                Demo System - Approved Logistics Limited
               </div>
             </div>
           </CardContent>
         </Card>
       </motion.div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <span className="text-foreground">Loading...</span>
+        </div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   )
 }
