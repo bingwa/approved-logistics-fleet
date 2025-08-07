@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,22 +8,20 @@ datasource db {
 }
 
 model Truck {
-  id             String      @id @default(cuid())
-  registration   String      @unique
-  make           String
-  model          String
-  year           Int
-  currentMileage Int
-  status         TruckStatus @default(ACTIVE)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  // Relations
+  id                  String               @id @default(cuid())
+  registration        String               @unique
+  make                String
+  model               String
+  year                Int
+  currentMileage      Int
+  status              TruckStatus          @default(ACTIVE)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  complianceDocuments ComplianceDocument[]
   fuelRecords         FuelRecord[]
   maintenanceRecords  MaintenanceRecord[]
-  complianceDocuments ComplianceDocument[]
-  spareParts          SparePart[]
   notifications       Notification[]
+  spareParts          SparePart[]
 
   @@map("trucks")
 }
@@ -47,10 +44,8 @@ model FuelRecord {
   createdBy        String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  // Relations
-  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [createdBy], references: [id])
+  user             User     @relation(fields: [createdBy], references: [id])
+  truck            Truck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
 
   @@map("fuel_records")
 }
@@ -74,17 +69,15 @@ model MaintenanceRecord {
   createdBy           String
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
-
-  // Relations
-  truck      Truck       @relation(fields: [truckId], references: [id], onDelete: Cascade)
-  user       User        @relation(fields: [createdBy], references: [id])
-  spareParts SparePart[]
+  user                User              @relation(fields: [createdBy], references: [id])
+  truck               Truck             @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  spareParts          SparePart[]
 
   @@map("maintenance_records")
 }
 
 model SparePart {
-  id                  String   @id @default(cuid())
+  id                  String            @id @default(cuid())
   maintenanceRecordId String
   truckId             String
   name                String
@@ -92,12 +85,10 @@ model SparePart {
   unitPrice           Float
   totalPrice          Float
   receiptUrl          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  // Relations
-  maintenanceRecord MaintenanceRecord @relation(fields: [maintenanceRecordId], references: [id], onDelete: Cascade)
-  truck             Truck             @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  maintenanceRecord   MaintenanceRecord @relation(fields: [maintenanceRecordId], references: [id], onDelete: Cascade)
+  truck               Truck             @relation(fields: [truckId], references: [id], onDelete: Cascade)
 
   @@map("spare_parts")
 }
@@ -117,10 +108,8 @@ model ComplianceDocument {
   createdBy         String
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
-
-  // Relations
-  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
-  user  User  @relation(fields: [createdBy], references: [id])
+  user              User             @relation(fields: [createdBy], references: [id])
+  truck             Truck            @relation(fields: [truckId], references: [id], onDelete: Cascade)
 
   @@map("compliance_documents")
 }
@@ -135,9 +124,7 @@ model ReportGeneration {
   status      ReportStatus @default(GENERATING)
   generatedBy String
   generatedAt DateTime     @default(now())
-
-  // Relations
-  user User @relation(fields: [generatedBy], references: [id])
+  user        User         @relation(fields: [generatedBy], references: [id])
 
   @@map("report_generations")
 }
@@ -148,16 +135,15 @@ model Notification {
   type              NotificationType
   priority          NotificationPriority
   title             String
-  message           String               @db.Text
+  message           String
   truckId           String?
   truckRegistration String?
   actionUrl         String?
   isRead            Boolean              @default(false)
   createdAt         DateTime             @default(now())
   expiresAt         DateTime?
-
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  truck Truck? @relation(fields: [truckId], references: [id], onDelete: SetNull)
+  truck             Truck?               @relation(fields: [truckId], references: [id])
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, isRead])
@@ -174,29 +160,25 @@ model NotificationPreference {
   maintenance Boolean @default(true)
   fuel        Boolean @default(false)
   system      Boolean @default(true)
-
-  // Relations
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notification_preferences")
 }
 
-// Authentication Models
 model Account {
   id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
@@ -221,75 +203,65 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// Enhanced User Model with Role-Based Access
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  password      String?
-  image         String?
-  phone         String?
-  location      String?
-  bio           String?
-  department    String?
-  role          Role      @default(USER)
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // Authentication Relations
-  accounts Account[]
-  sessions Session[]
-
-  // Application Relations
+  id                      String                  @id @default(cuid())
+  email                   String                  @unique
+  name                    String?
+  phone                   String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  department              String?
+  emailVerified           DateTime?
+  image                   String?
+  isActive                Boolean                 @default(true)
+  password                String?
+  bio                     String?
+  lastLoginAt             DateTime?
+  location                String?
+  role                    Role                    @default(USER)
+  accounts                Account[]
+  auditLogs               AuditLog[]
+  complianceDocuments     ComplianceDocument[]
   fuelRecords             FuelRecord[]
   maintenanceRecords      MaintenanceRecord[]
-  complianceDocuments     ComplianceDocument[]
-  reportGenerations       ReportGeneration[]
-  notifications           Notification[]
   notificationPreferences NotificationPreference?
-  auditLogs               AuditLog[]
+  notifications           Notification[]
+  reportGenerations       ReportGeneration[]
+  sessions                Session[]
   userPermissions         UserPermission[]
 
   @@map("users")
 }
 
-// Audit Log Model for tracking admin actions
 model AuditLog {
-  id          String    @id @default(cuid())
-  userId      String
-  action      String    // CREATE, UPDATE, DELETE
-  resource    String    // fuel_records, maintenance_records, etc.
-  resourceId  String
-  oldValues   Json?     // Previous values before change
-  newValues   Json?     // New values after change
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id])
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String
+  resourceId String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@index([resource, resourceId])
   @@map("audit_logs")
 }
 
-// User Permissions Model for granular access control
 model UserPermission {
   id         String     @id @default(cuid())
   userId     String
   permission Permission
   createdAt  DateTime   @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, permission])
   @@map("user_permissions")
 }
 
-// Enums
 enum Role {
   USER
   DRIVER
@@ -299,42 +271,29 @@ enum Role {
 }
 
 enum Permission {
-  // Fuel Management
   FUEL_VIEW
   FUEL_CREATE
   FUEL_UPDATE
   FUEL_DELETE
-
-  // Maintenance Management
   MAINTENANCE_VIEW
   MAINTENANCE_CREATE
   MAINTENANCE_UPDATE
   MAINTENANCE_DELETE
-
-  // Compliance Management
   COMPLIANCE_VIEW
   COMPLIANCE_CREATE
   COMPLIANCE_UPDATE
   COMPLIANCE_DELETE
-
-  // Truck Management
   TRUCK_VIEW
   TRUCK_CREATE
   TRUCK_UPDATE
   TRUCK_DELETE
-
-  // User Management
   USER_VIEW
   USER_CREATE
   USER_UPDATE
   USER_DELETE
-
-  // Report Management
   REPORT_VIEW
   REPORT_GENERATE
   REPORT_DELETE
-
-  // System Administration
   SYSTEM_ADMIN
   AUDIT_VIEW
 }
