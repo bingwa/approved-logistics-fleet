@@ -1,9 +1,9 @@
-// src/components/layout/Header.tsx (Updated)
+// src/components/layout/Header.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSession, signOut } from 'next-auth/react'
-import { Menu, Search, User, LogOut, Bell } from 'lucide-react'
+import { Menu, Search, User, LogOut, Bell, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -20,59 +20,96 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { data: session } = useSession()
+  const [demoUser, setDemoUser] = useState<any>(null)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const demoSession = sessionStorage.getItem('demoMode')
+      if (demoSession) {
+        try {
+          const parsedDemo = JSON.parse(demoSession)
+          setDemoUser(parsedDemo.user)
+        } catch (error) {
+          console.error('Invalid demo session')
+        }
+      }
+    }
+  }, [])
+
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: '/auth/signin' })
+    if (demoUser) {
+      // Handle demo logout
+      sessionStorage.removeItem('demoMode')
+      localStorage.removeItem('clientDemo')
+      window.location.href = '/auth/signin'
+    } else {
+      // Handle NextAuth logout
+      await signOut({ callbackUrl: '/auth/signin' })
+    }
   }
 
   const handleMobileMenuClick = () => {
     setIsMobileSidebarOpen(true)
   }
 
+  // Use demo user or session user
+  const user = demoUser || session?.user
+  const userName = user?.name || 'User'
+  const userEmail = user?.email || 'user@example.com'
+  const userRole = demoUser?.role || 'Fleet Manager'
+
   return (
     <>
-      <motion.header
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-slate-700/60 shadow-sm sticky top-0 z-30"
-      >
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+      <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        <div className="flex h-16 items-center justify-between px-4">
+          <div className="flex items-center space-x-4">
             {/* Mobile Menu Button */}
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              className="lg:hidden"
               onClick={handleMobileMenuClick}
-              className="hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors lg:hidden"
             >
               <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle mobile menu</span>
             </Button>
 
             {/* Desktop Menu Button */}
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
+              className="hidden lg:flex"
               onClick={onMenuClick}
-              className="hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden lg:flex"
             >
               <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle sidebar</span>
             </Button>
 
-            {/* Search - Hidden on small screens, shown on larger screens */}
-            <div className={`hidden sm:block transition-all duration-200 ${
-              isSearchFocused ? 'w-96' : 'w-64'
-            }`}>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-                <Input
-                  placeholder="Search trucks, records..."
-                  className="pl-10 bg-slate-50/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 focus:bg-white dark:focus:bg-slate-800 transition-all"
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                />
-              </div>
+            {/* Logo/Title */}
+            <div className="flex items-center space-x-2">
+              <h1 className="text-lg font-semibold text-foreground hidden sm:block">
+                Fleet Management
+              </h1>
+              {demoUser && (
+                <Badge variant="secondary" className="bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300">
+                  Demo Mode
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Search - Hidden on small screens, shown on larger screens */}
+          <div className="hidden md:flex items-center space-x-2 flex-1 max-w-md mx-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search fleet records..."
+                className="pl-10 bg-background/50"
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
+              />
             </div>
           </div>
 
@@ -80,10 +117,11 @@ export function Header({ onMenuClick }: HeaderProps) {
             {/* Mobile Search Button */}
             <Button
               variant="ghost"
-              size="sm"
-              className="sm:hidden"
+              size="icon"
+              className="md:hidden"
             >
               <Search className="h-5 w-5" />
+              <span className="sr-only">Search</span>
             </Button>
 
             {/* Theme Toggle - Hidden on mobile, shown on larger screens */}
@@ -97,53 +135,55 @@ export function Header({ onMenuClick }: HeaderProps) {
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                  <Avatar className="h-9 w-9 border-2 border-white dark:border-slate-700 shadow-md">
-                    <AvatarImage src={session?.user?.image || ''} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white text-sm">
-                      {session?.user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user?.image || ''} alt={userName} />
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      {userName.charAt(0)?.toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="px-3 py-2">
-                  <p className="text-sm font-medium">{session?.user?.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{session?.user?.email}</p>
-                  <Badge variant="secondary" className="text-xs mt-1">
-                    {session?.user?.role}
-                  </Badge>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <div className="flex items-center justify-start gap-2 p-2">
+                  <div className="flex flex-col space-y-1 leading-none">
+                    <p className="font-medium text-foreground">{userName}</p>
+                    <p className="text-xs text-muted-foreground">{userEmail}</p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">{userRole}</p>
+                    {demoUser && (
+                      <Badge variant="outline" className="text-xs w-fit bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                        Demo User
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <DropdownMenuSeparator />
                 
                 {/* Mobile-only Theme Toggle */}
-                <div className="sm:hidden">
-                  <div className="px-3 py-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Theme</span>
-                      <ThemeToggle />
-                    </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                </div>
+                <DropdownMenuItem className="sm:hidden">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Theme</span>
+                </DropdownMenuItem>
                 
                 <DropdownMenuItem>
-                  <User className="h-4 w-4 mr-2" />
-                  Profile Settings
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Profile Settings</span>
                 </DropdownMenuItem>
+                
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
+                
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>{demoUser ? 'Exit Demo' : 'Sign Out'}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
-      </motion.header>
+      </header>
 
       {/* Mobile Sidebar */}
-      <MobileSidebar
+      <MobileSidebar 
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
       />
