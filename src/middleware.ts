@@ -6,18 +6,9 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl
     const { token } = req.nextauth
-    
-    // Check for demo mode in cookies or headers
-    const demoMode = req.cookies.get('demo-access')?.value
-    const demoSession = req.cookies.get('demo-session')?.value
-    
-    // Allow demo access to bypass authentication
-    if (demoMode === 'true' || demoSession) {
-      return NextResponse.next()
-    }
-    
+
     // Admin-only routes
-    const adminRoutes = ['/settings', '/users']
+    const adminRoutes = ['/admin', '/users', '/settings/advanced']
     if (adminRoutes.some(route => pathname.startsWith(route))) {
       if (token?.role !== 'ADMIN') {
         return NextResponse.redirect(new URL('/dashboard', req.url))
@@ -25,7 +16,7 @@ export default withAuth(
     }
 
     // Manager and Admin routes
-    const managerRoutes = ['/reports', '/maintenance', '/compliance']
+    const managerRoutes = ['/reports/advanced', '/maintenance/bulk', '/compliance/bulk']
     if (managerRoutes.some(route => pathname.startsWith(route))) {
       if (!['ADMIN', 'MANAGER'].includes(token?.role as string)) {
         return NextResponse.redirect(new URL('/dashboard', req.url))
@@ -36,18 +27,7 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token, req }) => {
-        // Always allow demo access
-        const demoMode = req.cookies.get('demo-access')?.value
-        const demoSession = req.cookies.get('demo-session')?.value
-        
-        if (demoMode === 'true' || demoSession) {
-          return true
-        }
-        
-        // Otherwise require valid token
-        return !!token
-      },
+      authorized: ({ token }) => !!token,
     },
   }
 )
@@ -59,7 +39,7 @@ export const config = {
     '/fuel/:path*',
     '/compliance/:path*',
     '/reports/:path*',
-    '/profile/:path*',
+    '/admin/:path*',
     '/settings/:path*'
   ]
 }

@@ -4,10 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql" // or "mysql" or "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 
 model Truck {
   id             String      @id @default(cuid())
@@ -25,7 +24,7 @@ model Truck {
   maintenanceRecords  MaintenanceRecord[]
   complianceDocuments ComplianceDocument[]
   spareParts          SparePart[]
-   notifications Notification[]
+  notifications       Notification[]
 
   @@map("trucks")
 }
@@ -60,7 +59,7 @@ model MaintenanceRecord {
   id                  String            @id @default(cuid())
   truckId             String
   serviceDate         DateTime
-  serviceType         ServiceType       // maintenance or service
+  serviceType         ServiceType
   maintenanceCategory ServiceCategory
   description         String
   laborCost           Float
@@ -69,7 +68,7 @@ model MaintenanceRecord {
   technicianName      String?
   mileageAtService    Int?
   nextServiceDue      DateTime?
-  routeTaken          String? // Required for maintenance
+  routeTaken          String?
   receiptUrl          String?
   status              MaintenanceStatus @default(SCHEDULED)
   createdBy           String
@@ -85,7 +84,7 @@ model MaintenanceRecord {
 }
 
 model SparePart {
-  id                  String  @id @default(cuid())
+  id                  String   @id @default(cuid())
   maintenanceRecordId String
   truckId             String
   name                String
@@ -104,20 +103,20 @@ model SparePart {
 }
 
 model ComplianceDocument {
-  id               String         @id @default(cuid())
-  truckId          String
-  documentType     DocumentType
+  id                String           @id @default(cuid())
+  truckId           String
+  documentType      DocumentType
   certificateNumber String
-  issueDate        DateTime
-  expiryDate       DateTime
-  cost             Float
-  issuingAuthority String
-  documentUrl      String?
-  daysToExpiry     Int
-  status           ComplianceStatus
-  createdBy        String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  issueDate         DateTime
+  expiryDate        DateTime
+  cost              Float
+  issuingAuthority  String
+  documentUrl       String?
+  daysToExpiry      Int
+  status            ComplianceStatus
+  createdBy         String
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   // Relations
   truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
@@ -127,15 +126,15 @@ model ComplianceDocument {
 }
 
 model ReportGeneration {
-  id         String     @id @default(cuid())
-  reportType ReportType
-  truckId    String?
-  parameters Json // Store filter parameters
-  fileUrl    String?
-  fileSize   String?
-  status     ReportStatus @default(GENERATING)
+  id          String       @id @default(cuid())
+  reportType  ReportType
+  truckId     String?
+  parameters  Json
+  fileUrl     String?
+  fileSize    String?
+  status      ReportStatus @default(GENERATING)
   generatedBy String
-  generatedAt DateTime   @default(now())
+  generatedAt DateTime     @default(now())
 
   // Relations
   user User @relation(fields: [generatedBy], references: [id])
@@ -144,17 +143,17 @@ model ReportGeneration {
 }
 
 model Notification {
-  id                String           @id @default(cuid())
+  id                String               @id @default(cuid())
   userId            String
   type              NotificationType
   priority          NotificationPriority
   title             String
-  message           String           @db.Text
+  message           String               @db.Text
   truckId           String?
   truckRegistration String?
   actionUrl         String?
-  isRead            Boolean          @default(false)
-  createdAt         DateTime         @default(now())
+  isRead            Boolean              @default(false)
+  createdAt         DateTime             @default(now())
   expiresAt         DateTime?
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -182,6 +181,7 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
+// Authentication Models
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -221,44 +221,122 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// Update your existing User model to include authentication fields
+// Enhanced User Model with Role-Based Access
 model User {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   name          String?
-  email         String   @unique
+  email         String    @unique
   emailVerified DateTime?
   password      String?
   image         String?
-  phone         String?   // Add this field
-  location      String?   // Add this field
-  bio           String?   // Add this field
+  phone         String?
+  location      String?
+  bio           String?
   department    String?
-  role          Role     @default(USER)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  role          Role      @default(USER)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  // Relations - KEEP ONLY ONE DEFINITION OF EACH
-  accounts                Account[]
-  sessions                Session[]
+  // Authentication Relations
+  accounts Account[]
+  sessions Session[]
+
+  // Application Relations
   fuelRecords             FuelRecord[]
   maintenanceRecords      MaintenanceRecord[]
   complianceDocuments     ComplianceDocument[]
   reportGenerations       ReportGeneration[]
   notifications           Notification[]
   notificationPreferences NotificationPreference?
+  auditLogs               AuditLog[]
+  userPermissions         UserPermission[]
 
   @@map("users")
 }
 
+// Audit Log Model for tracking admin actions
+model AuditLog {
+  id          String    @id @default(cuid())
+  userId      String
+  action      String    // CREATE, UPDATE, DELETE
+  resource    String    // fuel_records, maintenance_records, etc.
+  resourceId  String
+  oldValues   Json?     // Previous values before change
+  newValues   Json?     // New values after change
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+// User Permissions Model for granular access control
+model UserPermission {
+  id         String     @id @default(cuid())
+  userId     String
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@map("user_permissions")
+}
 
 // Enums
 enum Role {
   USER
-  ADMIN
-  MANAGER
   DRIVER
+  MANAGER
+  ADMIN
   VIEWER
+}
+
+enum Permission {
+  // Fuel Management
+  FUEL_VIEW
+  FUEL_CREATE
+  FUEL_UPDATE
+  FUEL_DELETE
+
+  // Maintenance Management
+  MAINTENANCE_VIEW
+  MAINTENANCE_CREATE
+  MAINTENANCE_UPDATE
+  MAINTENANCE_DELETE
+
+  // Compliance Management
+  COMPLIANCE_VIEW
+  COMPLIANCE_CREATE
+  COMPLIANCE_UPDATE
+  COMPLIANCE_DELETE
+
+  // Truck Management
+  TRUCK_VIEW
+  TRUCK_CREATE
+  TRUCK_UPDATE
+  TRUCK_DELETE
+
+  // User Management
+  USER_VIEW
+  USER_CREATE
+  USER_UPDATE
+  USER_DELETE
+
+  // Report Management
+  REPORT_VIEW
+  REPORT_GENERATE
+  REPORT_DELETE
+
+  // System Administration
+  SYSTEM_ADMIN
+  AUDIT_VIEW
 }
 
 enum TruckStatus {
@@ -303,6 +381,9 @@ enum ReportType {
   SPARES_REPORT
   FLEET_OVERVIEW
   OPERATIONAL_COSTS
+  FUEL_EFFICIENCY
+  MAINTENANCE_SUMMARY
+  COMPLIANCE_STATUS
 }
 
 enum ReportStatus {
@@ -324,7 +405,3 @@ enum NotificationPriority {
   HIGH
   CRITICAL
 }
-
-// Add these models to your existing schema.prisma
-
-
