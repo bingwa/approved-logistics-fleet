@@ -14,29 +14,41 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          return null
+          console.log('Missing credentials')
+          throw new Error('Missing email or password')
         }
 
         try {
+          console.log('Attempting to find user:', credentials.email)
+          
           const user = await prisma.user.findUnique({
             where: {
               email: credentials.email
             }
           })
 
-          if (!user || !user.password) {
-            return null
+          if (!user) {
+            console.log('User not found:', credentials.email)
+            throw new Error('Invalid credentials')
           }
 
+          if (!user.password) {
+            console.log('User has no password set')
+            throw new Error('Invalid credentials')
+          }
+
+          console.log('Comparing passwords...')
           const isPasswordValid = await bcrypt.compare(
             credentials.password,
             user.password
           )
 
           if (!isPasswordValid) {
-            return null
+            console.log('Password invalid for user:', credentials.email)
+            throw new Error('Invalid credentials')
           }
 
+          console.log('Authentication successful for:', credentials.email)
           return {
             id: user.id,
             email: user.email,
@@ -44,7 +56,7 @@ export const authOptions: NextAuthOptions = {
             role: user.role,
           }
         } catch (error) {
-          console.error('Auth error:', error)
+          console.error('Authentication error:', error)
           return null
         }
       }
@@ -71,4 +83,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: '/auth/signin',
   },
+  debug: true, // Enable debug logs
 }
