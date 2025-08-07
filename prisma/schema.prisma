@@ -1,0 +1,330 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // or "mysql" or "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+model Truck {
+  id             String      @id @default(cuid())
+  registration   String      @unique
+  make           String
+  model          String
+  year           Int
+  currentMileage Int
+  status         TruckStatus @default(ACTIVE)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  // Relations
+  fuelRecords         FuelRecord[]
+  maintenanceRecords  MaintenanceRecord[]
+  complianceDocuments ComplianceDocument[]
+  spareParts          SparePart[]
+   notifications Notification[]
+
+  @@map("trucks")
+}
+
+model FuelRecord {
+  id               String   @id @default(cuid())
+  truckId          String
+  date             DateTime
+  liters           Float
+  costPerLiter     Float
+  totalCost        Float
+  route            String?
+  odometerReading  Int
+  previousOdometer Int
+  distanceCovered  Int
+  efficiencyKmpl   Float
+  attendantName    String
+  receiptNumber    String?
+  receiptUrl       String?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [createdBy], references: [id])
+
+  @@map("fuel_records")
+}
+
+model MaintenanceRecord {
+  id                  String            @id @default(cuid())
+  truckId             String
+  serviceDate         DateTime
+  serviceType         ServiceType       // maintenance or service
+  maintenanceCategory ServiceCategory
+  description         String
+  laborCost           Float
+  vendorName          String
+  vendorLocation      String?
+  technicianName      String?
+  mileageAtService    Int?
+  nextServiceDue      DateTime?
+  routeTaken          String? // Required for maintenance
+  receiptUrl          String?
+  status              MaintenanceStatus @default(SCHEDULED)
+  createdBy           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  // Relations
+  truck      Truck       @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [createdBy], references: [id])
+  spareParts SparePart[]
+
+  @@map("maintenance_records")
+}
+
+model SparePart {
+  id                  String  @id @default(cuid())
+  maintenanceRecordId String
+  truckId             String
+  name                String
+  quantity            Int
+  unitPrice           Float
+  totalPrice          Float
+  receiptUrl          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  maintenanceRecord MaintenanceRecord @relation(fields: [maintenanceRecordId], references: [id], onDelete: Cascade)
+  truck             Truck             @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@map("spare_parts")
+}
+
+model ComplianceDocument {
+  id               String         @id @default(cuid())
+  truckId          String
+  documentType     DocumentType
+  certificateNumber String
+  issueDate        DateTime
+  expiryDate       DateTime
+  cost             Float
+  issuingAuthority String
+  documentUrl      String?
+  daysToExpiry     Int
+  status           ComplianceStatus
+  createdBy        String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  // Relations
+  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [createdBy], references: [id])
+
+  @@map("compliance_documents")
+}
+
+model ReportGeneration {
+  id         String     @id @default(cuid())
+  reportType ReportType
+  truckId    String?
+  parameters Json // Store filter parameters
+  fileUrl    String?
+  fileSize   String?
+  status     ReportStatus @default(GENERATING)
+  generatedBy String
+  generatedAt DateTime   @default(now())
+
+  // Relations
+  user User @relation(fields: [generatedBy], references: [id])
+
+  @@map("report_generations")
+}
+
+model Notification {
+  id                String           @id @default(cuid())
+  userId            String
+  type              NotificationType
+  priority          NotificationPriority
+  title             String
+  message           String           @db.Text
+  truckId           String?
+  truckRegistration String?
+  actionUrl         String?
+  isRead            Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+  expiresAt         DateTime?
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  truck Truck? @relation(fields: [truckId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id          String  @id @default(cuid())
+  userId      String  @unique
+  email       Boolean @default(true)
+  sms         Boolean @default(false)
+  push        Boolean @default(true)
+  compliance  Boolean @default(true)
+  maintenance Boolean @default(true)
+  fuel        Boolean @default(false)
+  system      Boolean @default(true)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Update your existing User model to include authentication fields
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String   @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  phone         String?   // Add this field
+  location      String?   // Add this field
+  bio           String?   // Add this field
+  department    String?
+  role          Role     @default(USER)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations - KEEP ONLY ONE DEFINITION OF EACH
+  accounts                Account[]
+  sessions                Session[]
+  fuelRecords             FuelRecord[]
+  maintenanceRecords      MaintenanceRecord[]
+  complianceDocuments     ComplianceDocument[]
+  reportGenerations       ReportGeneration[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference?
+
+  @@map("users")
+}
+
+
+// Enums
+enum Role {
+  USER
+  ADMIN
+  MANAGER
+  DRIVER
+  VIEWER
+}
+
+enum TruckStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+  DECOMMISSIONED
+}
+
+enum ServiceType {
+  MAINTENANCE
+  SERVICE
+}
+
+enum ServiceCategory {
+  PREVENTIVE
+  CORRECTIVE
+  EMERGENCY
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DocumentType {
+  NTSA_INSPECTION
+  INSURANCE
+  TGL_LICENSE
+  COMMERCIAL_LICENSE
+}
+
+enum ComplianceStatus {
+  VALID
+  EXPIRING
+  EXPIRED
+}
+
+enum ReportType {
+  SPARES_REPORT
+  FLEET_OVERVIEW
+  OPERATIONAL_COSTS
+}
+
+enum ReportStatus {
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  COMPLIANCE
+  MAINTENANCE
+  FUEL
+  SYSTEM
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Add these models to your existing schema.prisma
+
+
