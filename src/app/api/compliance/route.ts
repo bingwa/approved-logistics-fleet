@@ -1,11 +1,9 @@
-// src/app/api/compliance/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 
-// GET - Fetch compliance documents
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -13,41 +11,30 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const truckId = searchParams.get('truckId')
-
-    let whereConditions: any = {}
-    
-    if (truckId && truckId !== 'all') {
-      whereConditions.truckId = truckId
-    }
-
-    const documents = await prisma.complianceDocument.findMany({
-      where: whereConditions,
+    const complianceDocuments = await prisma.complianceDocument.findMany({
       include: {
         truck: {
           select: {
             registration: true,
             make: true,
             model: true,
-          }
+          },
         },
         user: {
           select: {
             name: true,
-          }
-        }
+          },
+        },
       },
-      orderBy: { expiryDate: 'asc' },
+      orderBy: { createdAt: 'desc' },
     })
 
-    console.log(`Fetched ${documents.length} compliance documents`)
+    console.log(`Fetched ${complianceDocuments.length} compliance documents`)
 
     return NextResponse.json({
       success: true,
-      documents
+      complianceDocuments,
     })
-
   } catch (error) {
     console.error('Error fetching compliance documents:', error)
     return NextResponse.json(
@@ -57,50 +44,65 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new compliance document
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    console.log('[DEBUG] compliance session.user:', session?.user)
+    
     if (!session?.user?.id) {
+      console.error('[ERROR] No user ID in session')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Verify user exists in database
+    const userExists = await prisma.user.findUnique({ 
+      where: { id: session.user.id } 
+    })
+    console.log('[DEBUG] compliance userExists:', !!userExists)
+    
+    if (!userExists) {
+      return NextResponse.json({ error: 'User does not exist in DB' }, { status: 400 })
+    }
+
     const body = await request.json()
+    console.log('[DEBUG] compliance POST body received:', body)
+
     const {
       truckId,
       documentType,
-      certificateNumber,
+      documentNumber,
       issueDate,
       expiryDate,
-      cost,
       issuingAuthority,
+      status,
       documentUrl,
-      daysToExpiry,
-      status
+      reminderDays,
     } = body
 
-    // Validation
-    if (!truckId || !documentType || !certificateNumber || !issueDate || 
-        !expiryDate || !cost || !issuingAuthority) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    // Validate required fields
+    if (
+      !truckId ||
+      !documentType ||
+      !documentNumber ||
+      !issueDate ||
+      !issuingAuthority
+    ) {
+      console.error('Validation failed: Missing required fields')
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const document = await prisma.complianceDocument.create({
+    const complianceDocument = await prisma.complianceDocument.create({
       data: {
         truckId,
         documentType,
-        certificateNumber,
+        documentNumber,
         issueDate: new Date(issueDate),
-        expiryDate: new Date(expiryDate),
-        cost: parseFloat(cost),
+        expiryDate: expiryDate ? new Date(expiryDate) : null,
         issuingAuthority,
-        documentUrl,
-        daysToExpiry: parseInt(daysToExpiry),
-        status,
-        createdBy: session.user.id,
+        status: status || 'ACTIVE',
+        documentUrl: documentUrl || '',
+        reminderDays: reminderDays ? parseInt(reminderDays) : null,
+        createdBy: session.user.id, // Fix for foreign key constraint
       },
       include: {
         truck: {
@@ -108,32 +110,34 @@ export async function POST(request: NextRequest) {
             registration: true,
             make: true,
             model: true,
-          }
+          },
         },
         user: {
           select: {
             name: true,
-          }
-        }
-      }
+          },
+        },
+      },
     })
 
-    console.log('Compliance document created successfully:', document.id)
+    console.log('Compliance document created successfully:', complianceDocument.id)
 
-    // Invalidate cache
     revalidatePath('/compliance')
-    revalidatePath('/dashboard')
     revalidatePath('/reports')
 
-    return NextResponse.json({
-      success: true,
-      document
-    }, { status: 201 })
-
+    return NextResponse.json({ success: true, complianceDocument }, { status: 201 })
   } catch (error) {
-    console.error('Error creating compliance document:', error)
+    console.error('Detailed error creating compliance document:', error)
+    if (error instanceof Error) {
+      if (error.message.includes('Foreign key constraint')) {
+        return NextResponse.json({ error: 'Invalid truck or user reference' }, { status: 400 })
+      }
+      if (error.message.includes('Unique constraint')) {
+        return NextResponse.json({ error: 'Duplicate document detected' }, { status: 409 })
+      }
+    }
     return NextResponse.json(
-      { error: 'Failed to create compliance document' },
+      { error: 'Failed to create compliance document. Please try again.' },
       { status: 500 }
     )
   }

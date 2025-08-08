@@ -247,10 +247,6 @@ export default function DashboardPage() {
             Welcome back! Here's what's happening with your fleet today.
           </p>
         </div>
-        <Button onClick={() => router.push('/fuel')}>
-          <Plus className="h-4 w-4 mr-2" />
-          Quick Add
-        </Button>
       </motion.div>
 
       {/* Main Stats Cards */}

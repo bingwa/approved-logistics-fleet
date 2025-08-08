@@ -27,28 +27,29 @@ model Truck {
 }
 
 model FuelRecord {
-  id               String   @id @default(cuid())
-  truckId          String
-  date             DateTime
-  liters           Float
-  costPerLiter     Float
-  totalCost        Float
-  route            String?
-  odometerReading  Int
-  previousOdometer Int
-  distanceCovered  Int
-  efficiencyKmpl   Float
-  attendantName    String
-  receiptNumber    String?
-  receiptUrl       String?
-  createdBy        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  user             User     @relation(fields: [createdBy], references: [id])
-  truck            Truck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
-
+  id                String   @id @default(cuid())
+  truckId           String
+  date              DateTime
+  liters            Float
+  costPerLiter      Float
+  totalCost         Float?
+  route             String?
+  odometerReading   Int
+  previousOdometer  Int
+  distanceCovered   Int?
+  efficiencyKmpl    Float?
+  attendantName     String
+  receiptNumber     String?
+  receiptUrl        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Only truck relation - NO user relation
+  truck             Truck    @relation(fields: [truckId], references: [id])
+  
   @@map("fuel_records")
 }
+
 
 model MaintenanceRecord {
   id                  String            @id @default(cuid())
@@ -222,7 +223,6 @@ model User {
   accounts                Account[]
   auditLogs               AuditLog[]
   complianceDocuments     ComplianceDocument[]
-  fuelRecords             FuelRecord[]
   maintenanceRecords      MaintenanceRecord[]
   notificationPreferences NotificationPreference?
   notifications           Notification[]

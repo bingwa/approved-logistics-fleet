@@ -1,64 +1,30 @@
 // src/app/api/fuel/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { prisma } from '@/lib/prisma'
+import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { revalidatePath } from 'next/cache'
+import { prisma } from '@/lib/prisma'
 
-// GET handler to fetch fuel records
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const truckId = searchParams.get('truckId')
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
-
-    // Build filter conditions
-    let whereConditions: any = {}
-    
-    if (truckId && truckId !== 'all') {
-      whereConditions.truckId = truckId
-    }
-
-    if (from || to) {
-      whereConditions.date = {}
-      if (from) whereConditions.date.gte = new Date(from)
-      if (to) whereConditions.date.lte = new Date(to)
-    }
-
     const fuelRecords = await prisma.fuelRecord.findMany({
-      where: whereConditions,
       include: {
         truck: {
           select: {
             registration: true,
             make: true,
             model: true,
-          }
+          },
         },
-        user: {
-          select: {
-            name: true,
-          }
-        }
       },
-      orderBy: {
-        date: 'desc'
-      }
+      orderBy: { date: 'desc' },
     })
 
-    console.log(`Fetched ${fuelRecords.length} fuel records`)
-
-    return NextResponse.json({
-      success: true,
-      fuelRecords
-    })
-
+    return NextResponse.json({ fuelRecords })
   } catch (error) {
     console.error('Error fetching fuel records:', error)
     return NextResponse.json(
@@ -68,13 +34,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Updated POST handler with cache invalidation
 export async function POST(request: NextRequest) {
   try {
-    // Check authentication
+    console.log('🚀 Starting fuel record creation...')
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      console.error('Authentication failed: No session or user ID')
+    if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -94,102 +58,97 @@ export async function POST(request: NextRequest) {
       receiptUrl,
     } = body
 
-    // Validate required fields
-    if (!truckId || !date || !liters || !costPerLiter || !route ||
-        !odometerReading || !previousOdometer || !attendantName) {
-      console.error('Validation failed: Missing required fields')
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    if (
+      !truckId ||
+      !date ||
+      liters == null ||
+      costPerLiter == null ||
+      odometerReading == null ||
+      previousOdometer == null ||
+      !attendantName
+    ) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Calculate derived fields
-    const totalCost = parseFloat(liters) * parseFloat(costPerLiter)
-    const distanceCovered = parseInt(odometerReading) - parseInt(previousOdometer)
-    const efficiencyKmpl = distanceCovered / parseFloat(liters)
-
-    // Validate distance covered
-    if (distanceCovered <= 0) {
-      console.error('Validation failed: Invalid odometer readings')
-      return NextResponse.json(
-        { error: 'Current odometer reading must be greater than previous reading' },
-        { status: 400 }
-      )
+    const truck = await prisma.truck.findUnique({ where: { id: String(truckId) } })
+    if (!truck) {
+      console.error('Truck not found:', truckId)
+      return NextResponse.json({ error: 'Truck not found' }, { status: 400 })
     }
+    if (truck.status !== 'ACTIVE') {
+      console.error('Truck not active:', truck.status)
+      return NextResponse.json({ error: 'Selected truck is not active' }, { status: 400 })
+    }
+
+    const litersNum = Number(liters)
+    const cplNum = Number(costPerLiter)
+    const odoNum = Number(odometerReading)
+    const prevOdoNum = Number(previousOdometer)
+
+    const totalCostCalc = litersNum * cplNum
+    const totalCost = Number.isFinite(totalCostCalc) ? totalCostCalc : null
+
+    const distanceCoveredRaw = odoNum - prevOdoNum
+    const distanceCovered = Number.isFinite(distanceCoveredRaw) ? Math.trunc(distanceCoveredRaw) : null
+
+    const efficiencyCalc =
+      litersNum > 0 && Number.isFinite(distanceCoveredRaw)
+      ? distanceCoveredRaw / litersNum
+      : null
+    const efficiencyKmpl =
+      efficiencyCalc != null && Number.isFinite(efficiencyCalc) ? efficiencyCalc : null
+
+    console.log('Creating fuel record with calculated values:', {
+      totalCost,
+      distanceCovered,
+      efficiencyKmpl,
+    })
 
     const fuelRecord = await prisma.fuelRecord.create({
       data: {
-        truckId,
+        truckId: String(truckId),
         date: new Date(date),
-        liters: parseFloat(liters),
-        costPerLiter: parseFloat(costPerLiter),
-        totalCost,
-        route,
-        odometerReading: parseInt(odometerReading),
-        previousOdometer: parseInt(previousOdometer),
-        distanceCovered,
-        efficiencyKmpl,
-        attendantName,
+        liters: litersNum,
+        costPerLiter: cplNum,
+        totalCost: totalCost,
+        route: route || null,
+        odometerReading: Math.trunc(odoNum),
+        previousOdometer: Math.trunc(prevOdoNum),
+        distanceCovered: distanceCovered,
+        efficiencyKmpl: efficiencyKmpl,
+        attendantName: String(attendantName),
         receiptNumber: receiptNumber || null,
         receiptUrl: receiptUrl || null,
-        createdBy: session.user.id,
       },
-      include: {
-        truck: {
-          select: {
-            registration: true,
-            make: true,
-            model: true,
-          }
-        },
-        user: {
-          select: {
-            name: true,
-          }
-        }
-      }
     })
 
-    console.log('Fuel record created successfully:', fuelRecord.id)
+    console.log('✅ Fuel record created successfully:', fuelRecord.id)
 
-    // Update truck's current mileage
     await prisma.truck.update({
-      where: { id: truckId },
-      data: { currentMileage: parseInt(odometerReading) }
+      where: { id: String(truckId) },
+      data: { currentMileage: Math.trunc(odoNum) },
     })
 
-    // Invalidate cache for fuel pages
-    revalidatePath('/fuel')
-    revalidatePath('/reports')
-
-    console.log('Truck mileage updated and cache invalidated')
+    console.log('✅ Truck mileage updated successfully')
 
     return NextResponse.json({
       success: true,
-      fuelRecord
-    }, { status: 201 })
-
-  } catch (error) {
-    console.error('Detailed error creating fuel record:', error)
-    
-    if (error instanceof Error) {
-      if (error.message.includes('Foreign key constraint')) {
-        return NextResponse.json(
-          { error: 'Invalid truck selected' },
-          { status: 400 }
-        )
-      }
-      if (error.message.includes('Unique constraint')) {
-        return NextResponse.json(
-          { error: 'Duplicate record detected' },
-          { status: 409 }
-        )
-      }
+      message: 'Fuel record created successfully',
+      fuelRecordId: fuelRecord.id,
+    })
+  } catch (error: any) {
+    console.error('❌ Detailed error creating fuel record:', error)
+    if (error?.code === 'P2002') {
+      return NextResponse.json({ error: 'Duplicate fuel record' }, { status: 400 })
     }
-
+    if (error?.code === 'P2003') {
+      return NextResponse.json({ error: 'Invalid truck reference' }, { status: 400 })
+    }
+    if (error?.code === 'P2025') {
+      return NextResponse.json({ error: 'Related record not found' }, { status: 400 })
+    }
     return NextResponse.json(
-      { error: 'Failed to create fuel record. Please try again.' },
+      { error: 'Failed to create fuel record. Details: ' + JSON.stringify(error) },
       { status: 500 }
     )
   }

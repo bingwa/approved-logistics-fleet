@@ -1,5 +1,3 @@
-// src/components/forms/AddMaintenanceForm.tsx
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -10,10 +8,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CalendarIcon, Loader2, Plus, Trash2, Upload, FileText } from 'lucide-react'
+import { CalendarIcon, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,9 +32,7 @@ const sparePartSchema = z.object({
 
 const maintenanceSchema = z.object({
   truck_id: z.string().min(1, 'Please select a truck'),
-  service_date: z.date({
-    required_error: 'Service date is required',
-  }),
+  service_date: z.date({ required_error: 'Service date is required' }),
   service_type: z.enum(['MAINTENANCE', 'SERVICE'], {
     required_error: 'Please select service type',
   }),
@@ -49,14 +51,15 @@ const maintenanceSchema = z.object({
 
 type MaintenanceFormData = z.infer<typeof maintenanceSchema>
 
-// ✅ Fixed interface - changed from onClose to onSuccess and onCancel
 interface AddMaintenanceFormProps {
   onSuccess: () => void
   onCancel: () => void
 }
 
 export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormProps) {
-  const [trucks, setTrucks] = useState<any[]>([])
+  const [trucks, setTrucks] = useState<
+    { id: string; registration: string; make: string; model: string }[]
+  >([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [serviceDateOpen, setServiceDateOpen] = useState(false)
@@ -81,78 +84,73 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
 
   const { fields, append, remove } = useFieldArray({
     control,
-    name: "spare_parts"
+    name: 'spare_parts',
   })
 
-  // ✅ FIXED: Use useEffect instead of useState to call fetchTrucks
+  // Fetch trucks on mount
   useEffect(() => {
+    async function fetchTrucks() {
+      try {
+        setIsLoading(true)
+        const res = await fetch('/api/trucks')
+        if (res.ok) {
+          const data = await res.json()
+          setTrucks(data.trucks || [])
+        } else {
+          toast.error('Failed to load trucks')
+        }
+      } catch {
+        toast.error('Failed to load trucks')
+      } finally {
+        setIsLoading(false)
+      }
+    }
     fetchTrucks()
   }, [])
-
-  const fetchTrucks = async () => {
-    try {
-      const response = await fetch('/api/trucks')
-      if (response.ok) {
-        const data = await response.json()
-        setTrucks(data.trucks || [])
-      }
-    } catch (error) {
-      console.error('Error fetching trucks:', error)
-      toast.error('Failed to load trucks')
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const serviceDate = watch('service_date')
   const nextServiceDate = watch('next_service_due')
   const serviceType = watch('service_type')
   const spareParts = watch('spare_parts') || []
 
-  // Calculate total parts cost
   const totalPartsCost = spareParts.reduce((sum, part) => sum + (part?.total_price || 0), 0)
 
-  const addSparePart = () => {
+  const addSparePart = () =>
     append({
       name: '',
       quantity: 1,
       unit_price: 0,
       total_price: 0,
     })
-  }
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      // Validate file type
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'application/pdf']
-      if (!allowedTypes.includes(file.type)) {
-        toast.error('Please upload only JPEG or PDF files')
-        return
-      }
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('File size must be less than 5MB')
-        return
-      }
-
-      setUploadedFile(file)
-      setValue('receipt_file', file)
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'application/pdf']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload only JPEG or PDF files')
+      return
     }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB')
+      return
+    }
+    setUploadedFile(file)
+    setValue('receipt_file', file)
   }
 
   const onSubmit = async (data: MaintenanceFormData) => {
+    console.log('[DEBUG] Submitting maintenance form data:', data)
     setIsSubmitting(true)
+    
     try {
-      // Validate route requirement for maintenance
       if (data.service_type === 'MAINTENANCE' && !data.route_taken) {
         toast.error('Route is required for maintenance activities')
         setIsSubmitting(false)
         return
       }
 
-      // Prepare data for API
       const maintenanceData = {
         truckId: data.truck_id,
         serviceDate: data.service_date.toISOString(),
@@ -166,400 +164,349 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
         mileageAtService: data.mileage_at_service || null,
         nextServiceDue: data.next_service_due ? data.next_service_due.toISOString() : null,
         routeTaken: data.route_taken || '',
-        receiptUrl: '', // Handle file upload separately if needed
-        spareParts: spareParts.filter(part => part.name && part.quantity > 0).map(part => ({
-          name: part.name,
-          quantity: part.quantity,
-          unitPrice: part.unit_price,
-          totalPrice: part.total_price
-        }))
+        receiptUrl: '', // Adjust if you handle uploading receipt files server-side
+        spareParts: spareParts
+          .filter((p) => p.name && p.quantity > 0)
+          .map((p) => ({
+            name: p.name,
+            quantity: p.quantity,
+            unitPrice: p.unit_price,
+            totalPrice: p.total_price,
+          })),
       }
 
-      const response = await fetch('/api/maintenance', {
+      const resp = await fetch('/api/maintenance', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(maintenanceData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(maintenanceData),
       })
 
-      if (response.ok) {
+      if (resp.ok) {
         toast.success('Maintenance record created successfully!')
-        onSuccess() // ✅ Use onSuccess instead of onClose
+        console.log('[DEBUG] Form submission successful, calling onSuccess and onCancel')
+        onSuccess() // tell parent to refresh list
+        onCancel() // close this form
       } else {
-        const error = await response.json()
-        toast.error(error.error || 'Failed to create maintenance record')
+        const err = await resp.json()
+        toast.error(err.error || 'Failed to create maintenance record')
       }
-    } catch (error) {
-      console.error('Error creating maintenance record:', error)
+    } catch (err) {
       toast.error('Failed to create maintenance record')
+      console.error('Form submission error:', err)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    )
+    return <p>Loading trucks...</p>
   }
 
+  const kenyanRoutes = [
+    { value: 'Nairobi-Mombasa', label: 'Nairobi — Mombasa' },
+    { value: 'Nairobi-Kisumu', label: 'Nairobi — Kisumu' },
+    { value: 'Nairobi-Eldoret', label: 'Nairobi — Eldoret' },
+    { value: 'Mombasa-Malaba', label: 'Mombasa — Malaba' },
+    { value: 'Nairobi-Nakuru', label: 'Nairobi — Nakuru' },
+    { value: 'Other', label: 'Other Route' },
+  ]
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-h-[80vh] overflow-y-auto">
-      {/* Basic Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Truck Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="truck_id">Truck *</Label>
-              <Select onValueChange={(value) => setValue('truck_id', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select truck" />
-                </SelectTrigger>
-                <SelectContent>
-                  {trucks.map((truck) => (
-                    <SelectItem key={truck.id} value={truck.id}>
-                      {truck.registration} - {truck.make} {truck.model}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.truck_id && (
-                <p className="text-sm text-red-600">{errors.truck_id.message}</p>
-              )}
-            </div>
-
-            {/* Service Date */}
-            <div className="space-y-2">
-              <Label>Service Date *</Label>
-              <Popover open={serviceDateOpen} onOpenChange={setServiceDateOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !serviceDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {serviceDate ? format(serviceDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={serviceDate}
-                    onSelect={(date) => {
-                      setValue('service_date', date!)
-                      setServiceDateOpen(false)
-                    }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-              {errors.service_date && (
-                <p className="text-sm text-red-600">{errors.service_date.message}</p>
-              )}
-            </div>
-
-            {/* Service Type */}
-            <div className="space-y-2">
-              <Label htmlFor="service_type">Service Type *</Label>
-              <Select onValueChange={(value) => setValue('service_type', value as 'MAINTENANCE' | 'SERVICE')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select service type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MAINTENANCE">Maintenance (Route Required)</SelectItem>
-                  <SelectItem value="SERVICE">Service (General)</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.service_type && (
-                <p className="text-sm text-red-600">{errors.service_type.message}</p>
-              )}
-              {serviceType === 'MAINTENANCE' && (
-                <p className="text-sm text-blue-600">ℹ️ Route field becomes required for maintenance activities</p>
-              )}
-            </div>
-
-            {/* Maintenance Category */}
-            <div className="space-y-2">
-              <Label htmlFor="maintenance_category">Category *</Label>
-              <Select onValueChange={(value) => setValue('maintenance_category', value as 'PREVENTIVE' | 'CORRECTIVE' | 'EMERGENCY')}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PREVENTIVE">Preventive</SelectItem>
-                  <SelectItem value="CORRECTIVE">Corrective</SelectItem>
-                  <SelectItem value="EMERGENCY">Emergency</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.maintenance_category && (
-                <p className="text-sm text-red-600">{errors.maintenance_category.message}</p>
-              )}
-            </div>
+    <Card className="w-full max-w-3xl mx-auto max-h-[90vh] flex flex-col">
+      <CardHeader className="flex-none">
+        <CardTitle>Add Maintenance Record</CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-y-auto pb-6 px-1">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
+          {/* Truck Selection */}
+          <div>
+            <Label htmlFor="truck_id">Truck *</Label>
+            <Select onValueChange={(value) => setValue('truck_id', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select truck" />
+              </SelectTrigger>
+              <SelectContent>
+                {trucks.map((truck) => (
+                  <SelectItem key={truck.id} value={truck.id}>
+                    {truck.registration} — {truck.make} {truck.model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {errors.truck_id && <p className="text-xs text-red-600">{errors.truck_id.message}</p>}
           </div>
 
-          {/* Route - Required for maintenance */}
+          {/* Service Date */}
+          <div>
+            <Label>Service Date *</Label>
+            <Popover open={serviceDateOpen} onOpenChange={setServiceDateOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'w-full justify-start text-left font-normal',
+                    !serviceDate && 'text-muted-foreground'
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {serviceDate ? format(serviceDate, 'PPP') : 'Pick a date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={serviceDate}
+                  onSelect={(date) => {
+                    setValue('service_date', date!)
+                    setServiceDateOpen(false)
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            {errors.service_date && (
+              <p className="text-xs text-red-600">{errors.service_date.message}</p>
+            )}
+          </div>
+
+          {/* Service Type */}
+          <div>
+            <Label>Service Type *</Label>
+            <Select onValueChange={(value) => setValue('service_type', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MAINTENANCE">Maintenance (Route Required)</SelectItem>
+                <SelectItem value="SERVICE">Service (General)</SelectItem>
+              </SelectContent>
+            </Select>
+            {errors.service_type && (
+              <p className="text-xs text-red-600">{errors.service_type.message}</p>
+            )}
+          </div>
+
+          {/* Maintenance Category */}
+          <div>
+            <Label>Category *</Label>
+            <Select onValueChange={(value) => setValue('maintenance_category', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PREVENTIVE">Preventive</SelectItem>
+                <SelectItem value="CORRECTIVE">Corrective</SelectItem>
+                <SelectItem value="EMERGENCY">Emergency</SelectItem>
+              </SelectContent>
+            </Select>
+            {errors.maintenance_category && (
+              <p className="text-xs text-red-600">{errors.maintenance_category.message}</p>
+            )}
+          </div>
+
+          {/* Route Taken, required only if service_type==="MAINTENANCE" */}
           {serviceType === 'MAINTENANCE' && (
-            <div className="space-y-2">
-              <Label htmlFor="route_taken">Route Taken *</Label>
+            <div>
+              <Label>Route Taken *</Label>
               <Select onValueChange={(value) => setValue('route_taken', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select route" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Nairobi - Mombasa">Nairobi - Mombasa</SelectItem>
-                  <SelectItem value="Nairobi - Kisumu">Nairobi - Kisumu</SelectItem>
-                  <SelectItem value="Nairobi - Eldoret">Nairobi - Eldoret</SelectItem>
-                  <SelectItem value="Mombasa - Malaba">Mombasa - Malaba</SelectItem>
-                  <SelectItem value="Nairobi - Nakuru">Nairobi - Nakuru</SelectItem>
-                  <SelectItem value="Other Route">Other Route</SelectItem>
+                  {kenyanRoutes.map((route) => (
+                    <SelectItem key={route.value} value={route.value}>
+                      {route.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-              <p className="text-sm text-amber-600">⚠️ Route is mandatory for maintenance activities</p>
+              <p className="text-xs text-red-600">⚠️ Route is mandatory for maintenance activities</p>
             </div>
           )}
 
           {/* Description */}
-          <div className="space-y-2">
-            <Label htmlFor="description">Service Description *</Label>
+          <div>
+            <Label>Description *</Label>
             <Textarea
-              id="description"
-              placeholder="Describe the maintenance work performed..."
               {...register('description')}
-              className="min-h-[100px]"
+              placeholder="Describe the service performed..."
+              className="min-h-[60px]"
             />
             {errors.description && (
-              <p className="text-sm text-red-600">{errors.description.message}</p>
+              <p className="text-xs text-red-600">{errors.description.message}</p>
             )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Spare Parts Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Spare Parts & Items</CardTitle>
-            <Button type="button" onClick={addSparePart} variant="outline" size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Part
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {fields.map((field, index) => (
-            <div key={field.id} className="p-4 border rounded-lg space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">Part {index + 1}</h4>
-                <Button 
-                  type="button" 
-                  onClick={() => remove(index)} 
-                  variant="ghost" 
-                  size="sm"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="md:col-span-1">
-                  <Label>Part Name</Label>
-                  <Input
-                    {...register(`spare_parts.${index}.name`)}
-                    placeholder="Enter part name"
-                  />
+          {/* Spare Parts Section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label>Parts & Items</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addSparePart} className="h-8">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {fields.length === 0 && (
+              <p className="text-xs italic text-muted-foreground">No spare parts added yet</p>
+            )}
+
+            {fields.map((field, index) => (
+              <div key={field.id} className="p-2 border rounded space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-sm">Part {index + 1}</span>
+                  <Button
+                    onClick={() => remove(index)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                
-                <div>
-                  <Label>Quantity</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    {...register(`spare_parts.${index}.quantity`, { 
-                      valueAsNumber: true,
-                      onChange: (e) => {
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Name</Label>
+                    <Input {...register(`spare_parts.${index}.name`)} placeholder="Name" size="sm" />
+                  </div>
+                  <div>
+                    <Label>Quantity</Label>
+                    <Input
+                      {...register(`spare_parts.${index}.quantity`, { valueAsNumber: true })}
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      size="sm"
+                      onChange={(e) => {
                         const quantity = parseInt(e.target.value) || 1
                         const unitPrice = spareParts[index]?.unit_price || 0
                         setValue(`spare_parts.${index}.total_price`, quantity * unitPrice)
-                      }
-                    })}
-                  />
+                      }}
+                    />
+                  </div>
                 </div>
-                
-                <div>
-                  <Label>Unit Price (KSh)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    {...register(`spare_parts.${index}.unit_price`, { 
-                      valueAsNumber: true,
-                      onChange: (e) => {
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Unit Price (KSh)</Label>
+                    <Input
+                      {...register(`spare_parts.${index}.unit_price`, { valueAsNumber: true })}
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      size="sm"
+                      onChange={(e) => {
                         const unitPrice = parseFloat(e.target.value) || 0
                         const quantity = spareParts[index]?.quantity || 1
                         setValue(`spare_parts.${index}.total_price`, unitPrice * quantity)
-                      }
-                    })}
-                  />
-                </div>
-                
-                <div>
-                  <Label>Total (KSh)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    {...register(`spare_parts.${index}.total_price`, { valueAsNumber: true })}
-                    readOnly
-                  />
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Total (KSh)</Label>
+                    <Input
+                      {...register(`spare_parts.${index}.total_price`, { valueAsNumber: true })}
+                      readOnly
+                      className="bg-muted"
+                      size="sm"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {fields.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No spare parts added yet</p>
-              <p className="text-sm">Click "Add Part" to add spare parts</p>
-            </div>
-          )}
-
-          {fields.length > 0 && (
-            <div className="text-right font-semibold">
+            <p className="text-right text-sm font-medium">
               Total Parts Cost: KSh {totalPartsCost.toLocaleString()}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Cost & Vendor Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Cost & Vendor Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="labor_cost">Labor Cost (KSh)</Label>
-              <Input
-                id="labor_cost"
-                type="number"
-                step="0.01"
-                min="0"
-                {...register('labor_cost', { valueAsNumber: true })}
-              />
-              {errors.labor_cost && (
-                <p className="text-sm text-red-600">{errors.labor_cost.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Total Cost</Label>
-              <div className="p-3 bg-muted rounded-md">
-                <span className="text-lg font-semibold">
-                  KSh {(watch('labor_cost') + totalPartsCost).toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor_name">Service Provider *</Label>
-              <Input
-                id="vendor_name"
-                placeholder="Enter vendor name"
-                {...register('vendor_name')}
-              />
-              {errors.vendor_name && (
-                <p className="text-sm text-red-600">{errors.vendor_name.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="vendor_location">Vendor Location</Label>
-              <Input
-                id="vendor_location"
-                placeholder="Enter vendor location"
-                {...register('vendor_location')}
-              />
-            </div>
-          </div>
-
-          {/* Receipt Upload */}
-          <div className="space-y-2">
-            <Label htmlFor="receipt_file">Receipt Upload</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                id="receipt_file"
-                type="file"
-                accept=".jpg,.jpeg,.pdf"
-                onChange={handleFileUpload}
-                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/80"
-              />
-              <Upload className="h-4 w-4 text-muted-foreground" />
-            </div>
-            {uploadedFile && (
-              <p className="text-sm text-green-600 flex items-center">
-                <FileText className="h-4 w-4 mr-1" />
-                {uploadedFile.name}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Upload receipt for parts purchased (Max 5MB, JPEG or PDF only)
             </p>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Additional Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Additional Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="mileage_at_service">Mileage at Service (km)</Label>
+          {/* Labor Cost */}
+          <div>
+            <Label>Labor Cost (KSh)</Label>
+            <Input
+              {...register('labor_cost', { valueAsNumber: true })}
+              type="number"
+              min="0"
+              step="0.01"
+              size="sm"
+            />
+            {errors.labor_cost && <p className="text-xs text-red-600">{errors.labor_cost.message}</p>}
+          </div>
+
+          {/* Vendor Name and Location */}
+          <div>
+            <Label>Vendor / Service Provider *</Label>
+            <Input
+              {...register('vendor_name')}
+              placeholder="Name of vendor/service provider"
+              size="sm"
+            />
+            {errors.vendor_name && <p className="text-xs text-red-600">{errors.vendor_name.message}</p>}
+          </div>
+          <div>
+            <Label>Vendor Location (Optional)</Label>
+            <Input {...register('vendor_location')} placeholder="Vendor location" size="sm" />
+          </div>
+
+          <p className="text-right text-sm font-medium">
+            Total Cost: KSh {(watch('labor_cost') + totalPartsCost).toLocaleString()}
+          </p>
+
+          {/* Receipt Upload */}
+          <div>
+            <Label>Receipt Upload (Optional)</Label>
+            <input
+              type="file"
+              id="receipt_file"
+              accept="image/jpeg,image/jpg,application/pdf"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <label
+              htmlFor="receipt_file"
+              className="flex items-center gap-2 px-3 py-1.5 border rounded cursor-pointer text-muted-foreground hover:text-foreground text-sm"
+            >
+              <Upload className="h-4 w-4" />
+              <span>{uploadedFile ? `✔ ${uploadedFile.name}` : 'Upload receipt (JPEG/PDF, max 5MB)'}</span>
+            </label>
+            <p className="text-xs italic text-muted-foreground">
+              Upload a copy of the receipt for purchased parts (optional)
+            </p>
+          </div>
+
+          {/* Mileage and Technician */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Mileage at Service (km)</Label>
               <Input
-                id="mileage_at_service"
+                {...register('mileage_at_service', { valueAsNumber: true })}
                 type="number"
                 min="0"
-                placeholder="Enter mileage"
-                {...register('mileage_at_service', { valueAsNumber: true })}
+                placeholder="Current mileage"
+                size="sm"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="technician_name">Technician Name</Label>
-              <Input
-                id="technician_name"
-                placeholder="Enter technician name"
-                {...register('technician_name')}
-              />
+            <div>
+              <Label>Technician (Optional)</Label>
+              <Input {...register('technician_name')} placeholder="Technician name" size="sm" />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Next Service Due Date</Label>
+          {/* Next Service Due */}
+          <div>
+            <Label>Next Service Due (Optional)</Label>
             <Popover open={nextServiceOpen} onOpenChange={setNextServiceOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !nextServiceDate && "text-muted-foreground"
+                    'w-full justify-start text-left font-normal',
+                    !nextServiceDate && 'text-muted-foreground'
                   )}
+                  size="sm"
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {nextServiceDate ? format(nextServiceDate, "PPP") : "Pick next service date (optional)"}
+                  {nextServiceDate ? format(nextServiceDate, 'PPP') : 'Pick next service date'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
@@ -567,7 +514,7 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
                   mode="single"
                   selected={nextServiceDate}
                   onSelect={(date) => {
-                    setValue('next_service_due', date)
+                    setValue('next_service_due', date!)
                     setNextServiceOpen(false)
                   }}
                   initialFocus
@@ -575,30 +522,25 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
               </PopoverContent>
             </Popover>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Form Actions */}
-      <div className="flex justify-end space-x-3">
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={onCancel} // ✅ Use onCancel instead of onClose
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Adding Record...
-            </>
-          ) : (
-            'Add Maintenance Record'
-          )}
-        </Button>
-      </div>
-    </form>
+          {/* Form Buttons */}
+          <div className="flex justify-end gap-2 pt-2 border-t mt-5 sticky bottom-0 bg-white z-10">
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting} size="sm">
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting} size="sm">
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                'Add Record'
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

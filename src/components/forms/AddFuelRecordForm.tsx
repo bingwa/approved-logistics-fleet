@@ -56,9 +56,10 @@ const kenyanRoutes = [
 
 interface AddFuelRecordFormProps {
   onClose: () => void
+  onSubmitSuccess?: () => void // 👈 Add this prop
 }
 
-export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
+export function AddFuelRecordForm({ onClose, onSubmitSuccess }: AddFuelRecordFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [fuelDateOpen, setFuelDateOpen] = useState(false)
   const [selectedRoute, setSelectedRoute] = useState<any>(null)
@@ -77,11 +78,11 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
     resolver: zodResolver(fuelRecordSchema),
     defaultValues: {
       fuel_date: new Date(),
-      cost_per_liter: 167.06, // Current Kenya fuel price
+      cost_per_liter: 167.06,
       liters: 0,
       odometer_reading: 0,
       previous_odometer: 0,
-    }
+    },
   })
 
   // Fetch trucks from API on component mount
@@ -89,26 +90,28 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
     const fetchTrucks = async () => {
       try {
         setIsLoadingTrucks(true)
-        console.log('Fetching trucks from API...')
-        
         const response = await fetch('/api/trucks')
-        if (!response.ok) {
-          throw new Error(`Failed to fetch trucks: ${response.status}`)
+        if (response.ok) {
+          const data = await response.json()
+          // Handle different response formats
+          let trucksArray: Truck[] = []
+          if (data && data.trucks && Array.isArray(data.trucks)) {
+            trucksArray = data.trucks
+          } else if (Array.isArray(data)) {
+            trucksArray = data
+          } else {
+            trucksArray = []
+          }
+          setTrucks(trucksArray)
+        } else {
+          console.error('Failed to fetch trucks:', response.status)
         }
-        
-        const data = await response.json()
-        console.log('Fetched trucks data:', data)
-        
-        setTrucks(data.trucks || [])
       } catch (error) {
         console.error('Error fetching trucks:', error)
-        // Set fallback empty array
-        setTrucks([])
       } finally {
         setIsLoadingTrucks(false)
       }
     }
-    
     fetchTrucks()
   }, [])
 
@@ -126,7 +129,7 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
   const costPerKm = distanceCovered > 0 ? totalCost / distanceCovered : 0
 
   // Get selected truck data
-  const selectedTruck = trucks.find(truck => truck.id === selectedTruckId)
+  const selectedTruck = Array.isArray(trucks) ? trucks.find(truck => truck.id === selectedTruckId) : undefined
 
   // Generate automatic receipt number
   const generateReceiptNumber = () => {
@@ -145,12 +148,9 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
 
   const onSubmit = async (data: FuelRecordFormData) => {
     setIsSubmitting(true)
-    console.log('Submitting fuel record form with data:', data)
-    
     try {
-      // Auto-generate receipt number if not provided
       const receiptNumber = data.receipt_number || generateReceiptNumber()
-      
+
       const fuelRecordData = {
         truckId: data.truck_id,
         date: data.fuel_date,
@@ -164,8 +164,6 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
         receiptUrl: data.receipt_url || null,
       }
 
-      console.log('Sending request to /api/fuel with data:', fuelRecordData)
-
       const response = await fetch('/api/fuel', {
         method: 'POST',
         headers: {
@@ -173,28 +171,18 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
         },
         body: JSON.stringify(fuelRecordData),
       })
-
       const responseData = await response.json()
-      console.log('API Response:', responseData)
 
       if (!response.ok) {
         throw new Error(responseData.error || `HTTP error! status: ${response.status}`)
       }
 
-      console.log('Fuel record created successfully:', responseData)
-      
-      // Show success message
       alert('Fuel record created successfully!')
-      onClose()
-      
+      onClose?.()
+      onSubmitSuccess?.() // 👈 Trigger parent to refresh
     } catch (error) {
-      console.error('Detailed error adding fuel record:', error)
-      
-      // Show specific error message to user
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'An unexpected error occurred'
-        
+      console.error('Error adding fuel record:', error)
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred'
       alert(`Error: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
@@ -202,317 +190,291 @@ export function AddFuelRecordForm({ onClose }: AddFuelRecordFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-h-[80vh] overflow-y-auto">
-      {/* Depot Information */}
-      <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <h3 className="font-semibold text-blue-900 dark:text-blue-100">Company Fuel Depot</h3>
-              <p className="text-blue-700 dark:text-blue-300">Current Rate: KSh 167.06 per liter</p>
-              <p className="text-blue-700 dark:text-blue-300">Location: Approved Logistics Compound</p>
+    <Card className="w-full max-w-4xl mx-auto max-h-[85vh] overflow-y-auto">
+      <CardHeader>
+        <CardTitle>Add New Fuel Record</CardTitle>
+        <CardDescription>
+          Record fuel dispensing from the company depot
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <FileText className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-blue-700 dark:text-blue-300">Attendant Required: Yes</p>
-              <p className="text-blue-700 dark:text-blue-300">Receipt Auto-Generated: Yes</p>
+              <h3 className="text-blue-800 font-semibold">Company Fuel Depot</h3>
+              <p className="text-blue-600 text-sm">
+                Current Rate: KSh 167.06 per liter • Location: Approved Logistics Compound •
+                Attendant Required: Yes • Receipt Auto-Generated: Yes
+              </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Basic Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Fuel Dispensing Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Truck Selection */}
-          <div className="space-y-2">
-            <Label htmlFor="truck_id">Truck *</Label>
-            {isLoadingTrucks ? (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-slate-600">Loading trucks...</span>
-              </div>
-            ) : (
-              <Select onValueChange={(value) => {
-                console.log('Selected truck ID:', value)
-                setValue('truck_id', value)
-                const truck = trucks.find(t => t.id === value)
-                if (truck) {
-                  console.log('Setting previous odometer to:', truck.currentMileage)
-                  setValue('previous_odometer', truck.currentMileage)
-                }
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select truck" />
-                </SelectTrigger>
-                <SelectContent>
-                  {trucks.length === 0 ? (
-                    <SelectItem value="" disabled>No trucks available</SelectItem>
-                  ) : (
-                    trucks.map((truck) => (
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold border-b pb-2">Fuel Dispensing Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="truck_id">Truck *</Label>
+                <Select
+                  onValueChange={(value) => {
+                    setValue('truck_id', value)
+                    const truck = Array.isArray(trucks) ? trucks.find(t => t.id === value) : undefined
+                    if (truck) {
+                      setValue('previous_odometer', truck.currentMileage)
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                      isLoadingTrucks
+                        ? "Loading trucks..."
+                        : !Array.isArray(trucks) || trucks.length === 0
+                          ? "No trucks available"
+                          : "Select a truck"
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.isArray(trucks) && trucks.length > 0 && trucks.map((truck) => (
                       <SelectItem key={truck.id} value={truck.id}>
                         {truck.registration} - {truck.make} {truck.model}
                       </SelectItem>
-                    ))
-                  )}
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.truck_id && (
+                  <p className="text-sm text-red-600">{errors.truck_id.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Fuel Date *</Label>
+                <Popover open={fuelDateOpen} onOpenChange={setFuelDateOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !fuelDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {fuelDate ? format(fuelDate, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={fuelDate}
+                      onSelect={(date) => {
+                        setValue('fuel_date', date!)
+                        setFuelDateOpen(false)
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {errors.fuel_date && (
+                  <p className="text-sm text-red-600">{errors.fuel_date.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="liters">Liters *</Label>
+                <Input
+                  id="liters"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  {...register('liters', { valueAsNumber: true })}
+                />
+                {errors.liters && (
+                  <p className="text-sm text-red-600">{errors.liters.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cost_per_liter">Depot Rate (KSh/L)</Label>
+                <Input
+                  id="cost_per_liter"
+                  type="number"
+                  step="0.01"
+                  readOnly
+                  className="bg-gray-50"
+                  {...register('cost_per_liter', { valueAsNumber: true })}
+                />
+                <p className="text-xs text-gray-500">Fixed company depot rate</p>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Total Cost (KSh)</Label>
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <span className="text-lg font-semibold text-green-700">
+                    KSh {totalCost.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold border-b pb-2">Route Information</h3>
+            <div className="space-y-2">
+              <Label>Route *</Label>
+              <Select
+                onValueChange={(value) => {
+                  setValue('route', value)
+                  const route = kenyanRoutes.find(r => r.value === value)
+                  setSelectedRoute(route)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select route" />
+                </SelectTrigger>
+                <SelectContent>
+                  {kenyanRoutes.map((route) => (
+                    <SelectItem key={route.value} value={route.value}>
+                      {route.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            )}
-            {errors.truck_id && (
-              <p className="text-sm text-red-600">{errors.truck_id.message}</p>
-            )}
-            {selectedTruck && (
-              <p className="text-sm text-slate-600">
-                Current mileage: {selectedTruck.currentMileage.toLocaleString()} km
-              </p>
-            )}
-          </div>
-
-          {/* Fuel Date */}
-          <div className="space-y-2">
-            <Label>Fuel Date *</Label>
-            <Popover open={fuelDateOpen} onOpenChange={setFuelDateOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !fuelDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {fuelDate ? format(fuelDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={fuelDate}
-                  onSelect={(date) => {
-                    setValue('fuel_date', date!)
-                    setFuelDateOpen(false)
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-            {errors.fuel_date && (
-              <p className="text-sm text-red-600">{errors.fuel_date.message}</p>
-            )}
-          </div>
-
-          {/* Liters */}
-          <div className="space-y-2">
-            <Label htmlFor="liters">Liters *</Label>
-            <Input
-              type="number"
-              step="0.1"
-              min="0"
-              {...register('liters', { valueAsNumber: true })}
-            />
-            {errors.liters && (
-              <p className="text-sm text-red-600">{errors.liters.message}</p>
-            )}
-          </div>
-
-          {/* Cost per Liter (fixed depot rate) */}
-          <div className="space-y-2">
-            <Label htmlFor="cost_per_liter">Depot Rate (KSh/L)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              {...register('cost_per_liter', { valueAsNumber: true })}
-              readOnly
-            />
-            <p className="text-sm text-slate-600">Fixed company depot rate</p>
-          </div>
-
-          {/* Total Cost (calculated) */}
-          <div className="space-y-2">
-            <Label>Total Cost (KSh)</Label>
-            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-md border">
-              <span className="text-lg font-semibold">KSh {totalCost.toLocaleString()}</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Route Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Route Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Route */}
-          <div className="space-y-2">
-            <Label>Route *</Label>
-            <Select onValueChange={(value) => {
-              setValue('route', value)
-              const route = kenyanRoutes.find(r => r.value === value)
-              setSelectedRoute(route)
-            }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select route" />
-              </SelectTrigger>
-              <SelectContent>
-                {kenyanRoutes.map((route) => (
-                  <SelectItem key={route.value} value={route.value}>
-                    {route.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.route && (
-              <p className="text-sm text-red-600">{errors.route.message}</p>
-            )}
-            {selectedRoute && (
-              <p className="text-sm text-slate-600">
-                Expected distance: {selectedRoute.distance} km
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Odometer & Efficiency */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <Calculator className="h-5 w-5 mr-2" />
-            Odometer & Efficiency Calculation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Previous Odometer */}
-            <div className="space-y-2">
-              <Label htmlFor="previous_odometer">Previous Odometer (km) *</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('previous_odometer', { valueAsNumber: true })}
-              />
-              {errors.previous_odometer && (
-                <p className="text-sm text-red-600">{errors.previous_odometer.message}</p>
+              {errors.route && (
+                <p className="text-sm text-red-600">{errors.route.message}</p>
               )}
-            </div>
-
-            {/* Current Odometer */}
-            <div className="space-y-2">
-              <Label htmlFor="odometer_reading">Current Odometer (km) *</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('odometer_reading', { valueAsNumber: true })}
-              />
-              {errors.odometer_reading && (
-                <p className="text-sm text-red-600">{errors.odometer_reading.message}</p>
+              {selectedRoute && (
+                <p className="text-sm text-blue-600">
+                  Expected distance: {selectedRoute.distance} km
+                </p>
               )}
             </div>
           </div>
 
-          {/* Calculated Values */}
-          {distanceCovered > 0 && efficiency > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {distanceCovered.toLocaleString()}
-                </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">Distance (km)</div>
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold border-b pb-2">Odometer & Efficiency Calculation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="previous_odometer">Previous Odometer (km) *</Label>
+                <Input
+                  id="previous_odometer"
+                  type="number"
+                  min="0"
+                  readOnly
+                  className="bg-gray-50"
+                  {...register('previous_odometer', { valueAsNumber: true })}
+                />
+                {errors.previous_odometer && (
+                  <p className="text-sm text-red-600">{errors.previous_odometer.message}</p>
+                )}
               </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${
-                  efficiency > 2.5 ? 'text-green-600' :
-                  efficiency >= 2.0 ? 'text-yellow-600' : 'text-red-600'
-                }`}>
-                  {efficiency.toFixed(1)}
-                </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">Efficiency (km/L)</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatKSH(costPerKm)}
-                </div>
-                <div className="text-sm text-slate-600 dark:text-slate-400">Cost per KM</div>
+              <div className="space-y-2">
+                <Label htmlFor="odometer_reading">Current Odometer (km) *</Label>
+                <Input
+                  id="odometer_reading"
+                  type="number"
+                  min="0"
+                  {...register('odometer_reading', { valueAsNumber: true })}
+                />
+                {errors.odometer_reading && (
+                  <p className="text-sm text-red-600">{errors.odometer_reading.message}</p>
+                )}
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Attendant & Receipt */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <FileText className="h-5 w-5 mr-2" />
-            Attendant & Documentation
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Attendant Name */}
-          <div className="space-y-2">
-            <Label htmlFor="attendant_name">Fuel Attendant *</Label>
-            <Input {...register('attendant_name')} />
-            {errors.attendant_name && (
-              <p className="text-sm text-red-600">{errors.attendant_name.message}</p>
-            )}
-          </div>
-
-          {/* Receipt Number */}
-          <div className="space-y-2">
-            <Label htmlFor="receipt_number">Receipt Number</Label>
-            <Input {...register('receipt_number')} />
-            <p className="text-sm text-slate-600">
-              Leave empty to auto-generate: DEPOT-YYYYMMDD-HHMM
-            </p>
-          </div>
-
-          {/* Receipt Upload */}
-          <div className="space-y-2">
-            <Label>Upload Receipt</Label>
-            <FileUpload
-              onUploadComplete={handleReceiptUpload}
-              category="fuel"
-              accept=".jpg,.jpeg,.png,.pdf"
-              maxSize={10}
-              className="w-full"
-            />
-            <p className="text-sm text-slate-600">
-              Upload fuel dispensing receipt (Max 10MB, JPEG, PNG or PDF only)
-            </p>
-            
-            {receiptUrl && receiptFileName && (
-              <div className="mt-4">
-                <FileViewer
-                  fileUrl={receiptUrl}
-                  fileName={receiptFileName}
-                  className="w-full"
-                />
+            {distanceCovered > 0 && efficiency > 0 && (
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <h4 className="font-semibold text-sm">Calculated Values</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-800">
+                      {distanceCovered.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-600">Distance (km)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold ${efficiency >= 2.5 ? 'text-green-600' : efficiency >= 2.0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {efficiency.toFixed(1)}
+                    </div>
+                    <div className="text-sm text-gray-600">Efficiency (km/L)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-gray-800">
+                      {formatKSH(costPerKm)}
+                    </div>
+                    <div className="text-sm text-gray-600">Cost per KM</div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Form Actions */}
-      <div className="flex justify-end space-x-3 pt-4 border-t">
-        <Button type="button" variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSubmitting || isLoadingTrucks}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Recording Fuel...
-            </>
-          ) : (
-            'Record Fuel Dispensing'
-          )}
-        </Button>
-      </div>
-    </form>
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold border-b pb-2">Attendant & Documentation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="attendant_name">Fuel Attendant *</Label>
+                <Input
+                  id="attendant_name"
+                  {...register('attendant_name')}
+                />
+                {errors.attendant_name && (
+                  <p className="text-sm text-red-600">{errors.attendant_name.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="receipt_number">Receipt Number</Label>
+                <Input
+                  id="receipt_number"
+                  placeholder="Auto-generated"
+                  {...register('receipt_number')}
+                />
+                <p className="text-xs text-gray-500">
+                  Leave empty to auto-generate: DEPOT-YYYYMMDD-HHMM
+                </p>
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Upload Receipt (Optional)</Label>
+                <FileUpload onUploadComplete={handleReceiptUpload} />
+                <p className="text-xs text-gray-500">
+                  Upload fuel dispensing receipt (Max 10MB, JPEG, PNG or PDF only)
+                </p>
+                {receiptUrl && receiptFileName && (
+                  <FileViewer url={receiptUrl} fileName={receiptFileName} />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-4 pt-6 border-t bg-white sticky bottom-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Recording Fuel...
+                </>
+              ) : (
+                'Record Fuel Dispensing'
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
