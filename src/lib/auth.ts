@@ -82,6 +82,5 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/auth/signin',
-  },
-  debug: true, // Enable debug logs
+  }, // Enable debug logs
 }

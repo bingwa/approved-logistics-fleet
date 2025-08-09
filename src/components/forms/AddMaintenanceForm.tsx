@@ -175,6 +175,10 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
           })),
       }
 
+      // 🔹 DEBUG: Log the exact payload being sent
+      console.log('[DEBUG] Sending payload to /api/maintenance:')
+      console.log(JSON.stringify(maintenanceData, null, 2))
+
       const resp = await fetch('/api/maintenance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,10 +193,12 @@ export function AddMaintenanceForm({ onSuccess, onCancel }: AddMaintenanceFormPr
       } else {
         const err = await resp.json()
         toast.error(err.error || 'Failed to create maintenance record')
+        // 🔹 DEBUG: Log backend error response
+        console.error('[DEBUG] Backend POST /api/maintenance returned error:', err)
       }
     } catch (err) {
       toast.error('Failed to create maintenance record')
-      console.error('Form submission error:', err)
+      console.error('[DEBUG] Network/Fetch error while posting maintenance record:', err)
     } finally {
       setIsSubmitting(false)
     }
