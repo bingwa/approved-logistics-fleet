@@ -19,13 +19,12 @@ export default function DashboardLayout({
 
   useEffect(() => {
     setMounted(true)
-    
     if (typeof window !== 'undefined') {
       // Check multiple sources for demo mode
       const demoSession = sessionStorage.getItem('demoMode')
       const demoAccess = localStorage.getItem('clientDemo')
       const demoCookie = document.cookie.includes('demo-access=true')
-      
+
       if (demoSession || demoAccess === 'active' || demoCookie) {
         try {
           if (demoSession) {
@@ -56,40 +55,34 @@ export default function DashboardLayout({
   // Don't render until mounted
   if (!mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     )
   }
 
-  // Show loading while checking authentication
-  if (status === 'loading' || isLoading) {
+  // Show loading state
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <span className="text-foreground">Loading dashboard...</span>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     )
   }
 
-  // Check authentication: either NextAuth session OR valid demo mode
+  // Redirect to sign in if not authenticated and not in demo mode
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
   if (!session && !isDemoMode) {
-    // Only redirect if we're certain there's no access
     router.push('/auth/signin')
     return null
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Demo Mode Banner */}
-      {isDemoMode && !session && (
-        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 text-center text-sm font-medium sticky top-0 z-50">
-          🎯 Demo Mode Active - Client Presentation Environment
-        </div>
-      )}
-      <AppLayout>{children}</AppLayout>
-    </div>
-  )
+  return <AppLayout isDemoMode={isDemoMode}>{children}</AppLayout>
 }
