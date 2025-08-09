@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
     })
 
     console.log(`Fetched ${complianceDocuments.length} compliance documents`)
-
     return NextResponse.json({
       success: true,
       complianceDocuments,
@@ -47,63 +46,130 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    console.log('[DEBUG] compliance session.user:', session?.user)
-    
     if (!session?.user?.id) {
-      console.error('[ERROR] No user ID in session')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify user exists in database
-    const userExists = await prisma.user.findUnique({ 
-      where: { id: session.user.id } 
-    })
-    console.log('[DEBUG] compliance userExists:', !!userExists)
-    
-    if (!userExists) {
-      return NextResponse.json({ error: 'User does not exist in DB' }, { status: 400 })
-    }
-
     const body = await request.json()
-    console.log('[DEBUG] compliance POST body received:', body)
+    
+    // DEBUG: Log the entire body received
+    console.log('[DEBUG] Compliance backend received body:')
+    console.log(JSON.stringify(body, null, 2))
+    console.log('[DEBUG] session.user.id:', session?.user?.id)
 
     const {
       truckId,
       documentType,
       documentNumber,
+      certificateNumber, // Added for backwards compatibility
       issueDate,
       expiryDate,
       issuingAuthority,
       status,
       documentUrl,
-      reminderDays,
+      cost,
     } = body
 
-    // Validate required fields
-    if (
-      !truckId ||
-      !documentType ||
-      !documentNumber ||
-      !issueDate ||
-      !issuingAuthority
-    ) {
-      console.error('Validation failed: Missing required fields')
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    // Use either documentNumber or certificateNumber
+    const finalCertificateNumber = certificateNumber || documentNumber
+
+    // Check if truck exists in database
+    const doesTruckExist = await prisma.truck.findUnique({ where: { id: truckId } })
+    console.log('[DEBUG] Does truck exist?', doesTruckExist ? true : false)
+    console.log('[DEBUG] Truck ID being checked:', truckId)
+
+    if (!doesTruckExist) {
+      return NextResponse.json({ error: 'Truck not found in database' }, { status: 400 })
     }
 
+    // Ensure user exists in database - create if missing
+    let user = await prisma.user.findUnique({ where: { id: session.user.id } })
+    if (!user) {
+      // Try to find user by email first
+      const existingUserByEmail = await prisma.user.findUnique({ 
+        where: { email: session.user.email || '' } 
+      })
+      
+      if (existingUserByEmail) {
+        // Update existing user with session ID
+        user = await prisma.user.update({
+          where: { email: session.user.email || '' },
+          data: { id: session.user.id }
+        })
+        console.log('[DEBUG] Updated existing user with new session ID:', user.id)
+      } else {
+        // Create new user
+        user = await prisma.user.create({
+          data: {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.name || '',
+          }
+        })
+        console.log('[DEBUG] Created new user:', user.id)
+      }
+    } else {
+      console.log('[DEBUG] User exists in database:', user.id)
+    }
+
+    // Validate required fields according to your schema
+    const missingFields: string[] = []
+    if (!truckId) missingFields.push('truckId')
+    if (!documentType) missingFields.push('documentType')
+    if (!finalCertificateNumber) missingFields.push('certificateNumber')
+    if (!issueDate) missingFields.push('issueDate')
+    if (!expiryDate) missingFields.push('expiryDate') // Required in your schema
+    if (!issuingAuthority) missingFields.push('issuingAuthority')
+    if (cost === undefined || cost === null) missingFields.push('cost') // Required in your schema
+
+    if (missingFields.length > 0) {
+      console.error('[DEBUG] Missing fields detected:', missingFields)
+      return NextResponse.json(
+        { error: `Missing required fields: ${missingFields.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Calculate days to expiry (required field in your schema)
+    const today = new Date()
+    const expiryDateObj = new Date(expiryDate)
+    const daysToExpiry = Math.ceil((expiryDateObj.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+    // Determine status based on days to expiry
+    let complianceStatus = 'VALID'
+    if (daysToExpiry < 0) {
+      complianceStatus = 'EXPIRED'
+    } else if (daysToExpiry <= 30) {
+      complianceStatus = 'EXPIRING'
+    }
+
+    // Map documentType to match your enum
+    let mappedDocumentType = documentType
+    if (documentType === 'NTSA Inspection') mappedDocumentType = 'NTSA_INSPECTION'
+    if (documentType === 'Insurance Certificate') mappedDocumentType = 'INSURANCE'
+    if (documentType === 'TGL License') mappedDocumentType = 'TGL_LICENSE'
+    if (documentType === 'Commercial License') mappedDocumentType = 'COMMERCIAL_LICENSE'
+
+    const dataToInsert = {
+      truckId,
+      documentType: mappedDocumentType,
+      certificateNumber: finalCertificateNumber, // Your schema uses certificateNumber, not documentNumber
+      issueDate: new Date(issueDate),
+      expiryDate: new Date(expiryDate), // Required in your schema
+      issuingAuthority,
+      cost: parseFloat(cost || '0'), // Required in your schema
+      status: status || complianceStatus,
+      documentUrl: documentUrl || '',
+      daysToExpiry, // Required field in your schema
+      createdBy: session.user.id,
+    }
+
+    // DEBUG: Log insert payload to Prisma
+    console.log('[DEBUG] Data to insert into Prisma:')
+    console.log(JSON.stringify(dataToInsert, null, 2))
+
     const complianceDocument = await prisma.complianceDocument.create({
-      data: {
-        truckId,
-        documentType,
-        documentNumber,
-        issueDate: new Date(issueDate),
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-        issuingAuthority,
-        status: status || 'ACTIVE',
-        documentUrl: documentUrl || '',
-        reminderDays: reminderDays ? parseInt(reminderDays) : null,
-        createdBy: session.user.id, // Fix for foreign key constraint
-      },
+      data: dataToInsert,
       include: {
         truck: {
           select: {
@@ -120,14 +186,14 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    console.log('Compliance document created successfully:', complianceDocument.id)
+    console.log('[DEBUG] Created compliance document with ID:', complianceDocument.id)
 
     revalidatePath('/compliance')
     revalidatePath('/reports')
 
     return NextResponse.json({ success: true, complianceDocument }, { status: 201 })
   } catch (error) {
-    console.error('Detailed error creating compliance document:', error)
+    console.error('[DEBUG] Error creating compliance document:', error)
     if (error instanceof Error) {
       if (error.message.includes('Foreign key constraint')) {
         return NextResponse.json({ error: 'Invalid truck or user reference' }, { status: 400 })
