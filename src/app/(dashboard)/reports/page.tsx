@@ -859,7 +859,7 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Generated Report Preview */}
+          {/* FIXED: Generated Report Preview Section */}
           {generatedReport && (
             <Card className="mt-8">
               <CardHeader>
@@ -871,22 +871,25 @@ export default function ReportsPage() {
                   )}
                 </CardTitle>
                 <CardDescription>
-                  Generated on {format(new Date(generatedReport.metadata.generatedAt), 'MMM dd, yyyy HH:mm')}
+                  Generated on {format(new Date(generatedReport.metadata.generatedAt), 'MMM dd, yyyy HH:mm')} • 
+                  {Object.keys(generatedReport.data || {}).length} data sections • 
+                  {Object.values(selectedColumns).reduce((sum, cols) => sum + cols.length, 0)} columns selected
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-4 mb-6">
+                {/* Summary Stats */}
+                <div className="grid gap-4 md:grid-cols-4 mb-8">
                   <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="text-2xl font-bold text-blue-700">
                       {generatedReport.metadata.trucksIncluded}
                     </div>
-                    <div className="text-sm text-blue-600">Trucks</div>
+                    <div className="text-sm text-blue-600">Trucks Analyzed</div>
                   </div>
                   <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
                     <div className="text-2xl font-bold text-green-700">
                       {formatKSH(generatedReport.analytics?.overall?.totalOperationalCost || 0)}
                     </div>
-                    <div className="text-sm text-green-600">Total Costs</div>
+                    <div className="text-sm text-green-600">Total Operational Cost</div>
                   </div>
                   <div className="text-center p-4 bg-orange-50 rounded-lg border border-orange-200">
                     <div className="text-2xl font-bold text-orange-700">
@@ -896,43 +899,188 @@ export default function ReportsPage() {
                   </div>
                   <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
                     <div className="text-2xl font-bold text-purple-700">
-                      {generatedReport.data?.maintenance?.length || 0}
+                      {Object.values(generatedReport.data || {}).reduce((sum: number, records: any) => sum + (records?.length || 0), 0)}
                     </div>
-                    <div className="text-sm text-purple-600">Maintenance Records</div>
+                    <div className="text-sm text-purple-600">Total Records</div>
                   </div>
                 </div>
 
-                <div className="flex gap-3 mt-6">
+                {/* FIXED: Actual Data Tables Preview */}
+                <div className="space-y-6">
+                  {Object.keys(selectedColumns || {}).map(fieldType => {
+                    const records = generatedReport.data?.[fieldType] || []
+                    const columns = selectedColumns[fieldType] || []
+                    
+                    if (records.length === 0 || columns.length === 0) return null
+                    
+                    const isSparePartsRelated = fieldType === 'spares' || 
+                      columns.some((col: string) => col.toLowerCase().includes('spare') || col.toLowerCase().includes('parts'))
+                    
+                    const fieldTitles = {
+                      maintenance: 'Maintenance Records',
+                      fuel: 'Fuel Records',
+                      compliance: 'Compliance Documents',
+                      spares: 'Spare Parts Details',
+                      analytics: 'Analytics Data'
+                    }
+                    
+                    return (
+                      <div key={fieldType} className={`bg-gradient-to-r ${isSparePartsRelated ? 'from-orange-50 to-amber-50' : 'from-blue-50 to-indigo-50'} p-6 rounded-xl border ${isSparePartsRelated ? 'border-orange-200' : 'border-blue-200'}`}>
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className={`font-bold text-lg flex items-center gap-2 ${isSparePartsRelated ? 'text-orange-800' : 'text-blue-800'}`}>
+                            {fieldType === 'maintenance' && <Wrench className="h-5 w-5" />}
+                            {fieldType === 'fuel' && <Fuel className="h-5 w-5" />}
+                            {fieldType === 'compliance' && <Shield className="h-5 w-5" />}
+                            {fieldType === 'spares' && <Settings className="h-5 w-5" />}
+                            {fieldType === 'analytics' && <TrendingUp className="h-5 w-5" />}
+                            {fieldTitles[fieldType as keyof typeof fieldTitles] || fieldType}
+                            {isSparePartsRelated && <Badge className="bg-orange-100 text-orange-800 text-xs">🔧 FOCUS</Badge>}
+                          </h4>
+                          <Badge variant="outline" className="text-xs">
+                            {records.length} records • {columns.length} columns
+                          </Badge>
+                        </div>
+                        
+                        <div className="bg-white rounded-lg overflow-hidden shadow-sm border">
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead className={`${isSparePartsRelated ? 'bg-gradient-to-r from-orange-600 to-orange-700' : 'bg-gradient-to-r from-blue-600 to-blue-700'} text-white`}>
+                                <tr>
+                                  {columns.map((column: string) => (
+                                    <th key={column} className="px-4 py-3 text-left text-sm font-semibold">
+                                      {column}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {records.slice(0, 5).map((record: any, index: number) => (
+                                  <tr key={index} className={`hover:${isSparePartsRelated ? 'bg-orange-50' : 'bg-blue-50'} transition-colors`}>
+                                    {columns.map((column: string) => {
+                                      let value = record[column] || 'N/A'
+                                      
+                                      // Format the data based on column type
+                                      if (column.toLowerCase().includes('date') && value !== 'N/A') {
+                                        try {
+                                          value = format(new Date(value), 'MMM dd, yyyy')
+                                        } catch (e) {
+                                          // Keep original value if date parsing fails
+                                        }
+                                      }
+                                      
+                                      if (column.toLowerCase().includes('cost') && typeof value === 'number') {
+                                        value = formatKSH(value)
+                                      }
+                                      
+                                      if (column.toLowerCase().includes('price') && typeof value === 'number') {
+                                        value = formatKSH(value)
+                                      }
+                                      
+                                      if (column.toLowerCase().includes('quantity') && typeof value === 'number') {
+                                        value = `${value.toLocaleString()} units`
+                                      }
+                                      
+                                      // Highlight spare parts related cells
+                                      const isSpareCol = column.toLowerCase().includes('spare') || 
+                                                       column.toLowerCase().includes('parts') ||
+                                                       column.toLowerCase().includes('quantity') ||
+                                                       column.toLowerCase().includes('destination') ||
+                                                       column.toLowerCase().includes('supplier')
+                                      
+                                      return (
+                                        <td 
+                                          key={column} 
+                                          className={`px-4 py-3 text-sm ${isSpareCol ? 'bg-orange-50 font-medium' : ''}`}
+                                        >
+                                          {typeof value === 'string' && value.length > 50 
+                                            ? `${value.substring(0, 50)}...` 
+                                            : value
+                                          }
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                ))}
+                                {records.length > 5 && (
+                                  <tr>
+                                    <td 
+                                      colSpan={columns.length}
+                                      className={`px-4 py-3 text-center text-sm ${isSparePartsRelated ? 'text-orange-600' : 'text-blue-600'} italic font-medium`}
+                                    >
+                                      ... and {records.length - 5} more records (will be included in downloaded report)
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  
+                  {Object.keys(generatedReport.data || {}).length === 0 && (
+                    <div className="text-center py-12 text-gray-500">
+                      <FileText className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                      <h3 className="text-lg font-medium mb-2">No Data Found</h3>
+                      <p className="text-sm">The generated report contains no data for the selected criteria.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Download Buttons */}
+                <div className="flex gap-3 mt-8 justify-center">
                   <Button 
                     onClick={downloadReportPDF}
                     disabled={isDownloading.pdf}
-                    className="bg-red-600 hover:bg-red-700"
+                    className="bg-red-600 hover:bg-red-700 px-6 py-2"
                   >
                     {isDownloading.pdf ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Download PDF
+                    Download PDF Report
                   </Button>
                   
                   <Button 
                     onClick={downloadReportExcel}
                     disabled={isDownloading.excel}
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 px-6 py-2"
                   >
                     {isDownloading.excel ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Download Excel
+                    Download Excel File
                   </Button>
                   
-                  <Button variant="outline" onClick={() => setGeneratedReport(null)}>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setGeneratedReport(null)}
+                    className="px-6 py-2"
+                  >
                     Close Preview
                   </Button>
                 </div>
+                
+                {/* Debug Information (Remove in production) */}
+                {process.env.NODE_ENV === 'development' && (
+                  <details className="mt-4 p-4 bg-gray-50 rounded-lg text-xs">
+                    <summary className="cursor-pointer font-medium">Debug Information</summary>
+                    <div className="mt-2 space-y-2">
+                      <div><strong>Generated Report Keys:</strong> {Object.keys(generatedReport).join(', ')}</div>
+                      <div><strong>Data Keys:</strong> {Object.keys(generatedReport.data || {}).join(', ')}</div>
+                      <div><strong>Selected Columns:</strong> {JSON.stringify(selectedColumns, null, 2)}</div>
+                      {Object.keys(generatedReport.data || {}).map(key => (
+                        <div key={key}>
+                          <strong>{key} Records:</strong> {generatedReport.data[key]?.length || 0}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
               </CardContent>
             </Card>
           )}
