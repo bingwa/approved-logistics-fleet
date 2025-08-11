@@ -35,7 +35,7 @@ interface Truck {
   model: string
 }
 
-// ENHANCED: Comprehensive column mappings with spare parts focus
+// FIXED: Real compliance columns that match your actual database schema
 const REPORT_TYPE_COLUMNS = {
   comprehensive: {
     maintenance: [
@@ -56,9 +56,18 @@ const REPORT_TYPE_COLUMNS = {
       "Parts Supplier/Vendor"
     ],
     fuel: ["Truck Number (Registration Plate)", "Date", "Liters", "Cost per Liter", "Total Cost", "Distance", "Efficiency", "Attendant", "Route"],
-    compliance: ["Truck Number (Registration Plate)", "Document Type", "Issue Date", "Expiry Date", "Status", "Days to Expiry", "Cost", "Authority"],
+    // FIXED: Real compliance columns based on your actual compliance form
+    compliance: [
+      "Truck Number (Registration Plate)", 
+      "Document Type", 
+      "Certificate Number", 
+      "Issue Date", 
+      "Expiry Date", 
+      "Status", 
+      "Cost", 
+      "Issuing Authority"
+    ],
     analytics: ["Metric", "Value", "Period", "Trend", "Performance"],
-    // NEW: Dedicated Spare Parts Section
     spares: [
       "Truck Number (Registration Plate)",
       "Service Date",
@@ -86,7 +95,14 @@ const REPORT_TYPE_COLUMNS = {
       "Technician"
     ],
     fuel: ["Truck Number (Registration Plate)", "Date", "Liters", "Total Cost", "Efficiency", "Route"],
-    compliance: ["Truck Number (Registration Plate)", "Document Type", "Status", "Expiry Date"],
+    compliance: [
+      "Truck Number (Registration Plate)", 
+      "Document Type", 
+      "Status", 
+      "Expiry Date",
+      "Cost",
+      "Issuing Authority"
+    ],
     analytics: ["Metric", "Value", "Performance Status"],
     spares: [
       "Truck Number (Registration Plate)",
@@ -104,14 +120,20 @@ const REPORT_TYPE_COLUMNS = {
       "Description", 
       "Labor Cost", 
       "Vendor",
-      // FINANCIAL FOCUS ON SPARE PARTS
       "Spare Parts Cost Breakdown",
       "Individual Spare Part Costs",
       "Spare Parts vs Labor Cost Ratio",
       "Total Parts Investment"
     ],
     fuel: ["Truck Number (Registration Plate)", "Date", "Total Cost", "Cost per Liter"],
-    compliance: ["Truck Number (Registration Plate)", "Document Type", "Cost"],
+    compliance: [
+      "Truck Number (Registration Plate)", 
+      "Document Type", 
+      "Cost",
+      "Issue Date",
+      "Expiry Date",
+      "Issuing Authority"
+    ],
     analytics: ["Metric", "Cost Impact", "Budget Variance"],
     spares: [
       "Spare Part Name",
@@ -126,7 +148,17 @@ const REPORT_TYPE_COLUMNS = {
     ]
   },
   compliance: {
-    compliance: ["Truck Number (Registration Plate)", "Document Type", "Certificate Number", "Issue Date", "Expiry Date", "Status", "Authority"],
+    // FIXED: Only real compliance fields that exist in your database
+    compliance: [
+      "Truck Number (Registration Plate)", 
+      "Document Type", 
+      "Certificate Number", 
+      "Issue Date", 
+      "Expiry Date", 
+      "Status",
+      "Cost",
+      "Issuing Authority"
+    ],
     maintenance: ["Truck Number (Registration Plate)", "Service Date", "Service Type", "Status"],
     fuel: ["Truck Number (Registration Plate)", "Date", "Route"],
     analytics: ["Metric", "Compliance Status", "Days to Expiry"]
@@ -145,7 +177,15 @@ const REPORT_TYPE_COLUMNS = {
       "Parts Installation Location"
     ],
     fuel: ["Date", "Liters", "Cost per Liter", "Total Cost", "Distance", "Efficiency", "Route"],
-    compliance: ["Document Type", "Issue Date", "Expiry Date", "Status", "Cost", "Authority"],
+    compliance: [
+      "Document Type", 
+      "Issue Date", 
+      "Expiry Date", 
+      "Status", 
+      "Cost", 
+      "Issuing Authority",
+      "Certificate Number"
+    ],
     analytics: ["Metric", "Value", "Trend", "Target"],
     spares: [
       "Service Date",
@@ -180,12 +220,12 @@ export default function ReportsPage() {
   const [availableColumns, setAvailableColumns] = useState<{[key: string]: string[]}>({})
   const [selectedColumns, setSelectedColumns] = useState<{[key: string]: string[]}>({})
 
-  // ENHANCED: Report fields with spare parts as a dedicated option
+  // FIXED: Removed badges from field descriptions
   const reportFields = [
     { id: 'maintenance', label: 'Maintenance Records', icon: Wrench, description: 'Service and repair records' },
     { id: 'fuel', label: 'Fuel Records', icon: Fuel, description: 'Fuel consumption and costs' },
     { id: 'compliance', label: 'Compliance', icon: Shield, description: 'Certificates and documentation' },
-    { id: 'spares', label: 'Spare Parts', icon: Settings, description: 'Detailed spare parts usage and costs' }, // NEW
+    { id: 'spares', label: 'Spare Parts', icon: Settings, description: 'Detailed spare parts usage and costs' },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp, description: 'Performance metrics and insights' }
   ]
 
@@ -280,7 +320,7 @@ export default function ReportsPage() {
     }
   }
 
-  // FIXED: Truck selection handlers
+  // Truck selection handlers
   const handleTruckSelection = (checked: boolean | string, truckId: string) => {
     const isChecked = checked === true
     
@@ -298,7 +338,7 @@ export default function ReportsPage() {
     }
   }
 
-  // FIXED: Field selection handlers with column updates
+  // Field selection handlers with column updates
   const handleFieldSelection = (checked: boolean | string, fieldId: string) => {
     const isChecked = checked === true
     
@@ -326,7 +366,7 @@ export default function ReportsPage() {
     }
   }
 
-  // FIXED: Column selection handlers
+  // Column selection handlers
   const handleColumnSelection = (checked: boolean | string, fieldType: string, columnName: string) => {
     const isChecked = checked === true
     
@@ -488,7 +528,6 @@ export default function ReportsPage() {
     }
   }
 
-  // UPDATED: generateFullReport function with Fleet Asset Information removed
   const generateFullReport = () => {
     const reportWindow = window.open('', '_blank')
     if (!reportWindow) return
@@ -698,7 +737,6 @@ export default function ReportsPage() {
                 <CardContent className="space-y-3">
                   {reportFields.map((field) => {
                     const Icon = field.icon
-                    const isSparePartsField = field.id === 'spares'
                     return (
                       <div key={field.id} className="flex items-start space-x-3">
                         <Checkbox
@@ -707,10 +745,9 @@ export default function ReportsPage() {
                           onCheckedChange={(checked) => handleFieldSelection(checked, field.id)}
                         />
                         <div className="flex-1">
-                          <Label htmlFor={field.id} className={`flex items-center gap-2 cursor-pointer font-medium ${isSparePartsField ? 'text-orange-700' : ''}`}>
+                          <Label htmlFor={field.id} className="flex items-center gap-2 cursor-pointer font-medium">
                             <Icon className="h-4 w-4" />
                             {field.label}
-                            {isSparePartsField && <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">CLIENT FOCUS</Badge>}
                           </Label>
                           <p className="text-sm text-muted-foreground mt-1">
                             {field.description}
@@ -725,7 +762,6 @@ export default function ReportsPage() {
 
             {/* Right Column - Column Selection */}
             <div className="space-y-6">
-              {/* Select Columns to Include Card */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -743,62 +779,54 @@ export default function ReportsPage() {
                       <p>Please select data fields first to see available columns</p>
                     </div>
                   ) : (
-                    selectedFields.map((fieldType) => {
-                      const isSparePartsField = fieldType === 'spares'
-                      return (
-                        <div key={fieldType} className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label className={`font-semibold text-sm uppercase tracking-wide ${isSparePartsField ? 'text-orange-700' : ''}`}>
-                              {fieldType} Columns
-                              {isSparePartsField && <span className="ml-2 text-xs">⚙️</span>}
-                            </Label>
-                            <div className="flex gap-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleSelectAllColumns(fieldType, true)}
-                                className="text-xs h-6 px-2"
-                              >
-                                All
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleSelectAllColumns(fieldType, false)}
-                                className="text-xs h-6 px-2"
-                              >
-                                None
-                              </Button>
-                            </div>
+                    selectedFields.map((fieldType) => (
+                      <div key={fieldType} className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="font-semibold text-sm uppercase tracking-wide">
+                            {fieldType} Columns
+                          </Label>
+                          <div className="flex gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleSelectAllColumns(fieldType, true)}
+                              className="text-xs h-6 px-2"
+                            >
+                              All
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleSelectAllColumns(fieldType, false)}
+                              className="text-xs h-6 px-2"
+                            >
+                              None
+                            </Button>
                           </div>
-                          
-                          <div className={`grid grid-cols-1 gap-2 pl-4 border-l-2 ${isSparePartsField ? 'border-orange-300' : 'border-muted'}`}>
-                            {(availableColumns[fieldType] || []).map((column) => {
-                              const isSparePartsColumn = column.toLowerCase().includes('spare') || column.toLowerCase().includes('parts')
-                              return (
-                                <div key={`${fieldType}-${column}`} className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id={`${fieldType}-${column}`}
-                                    checked={(selectedColumns[fieldType] || []).includes(column)}
-                                    onCheckedChange={(checked) => handleColumnSelection(checked, fieldType, column)}
-                                  />
-                                  <Label htmlFor={`${fieldType}-${column}`} className={`text-sm cursor-pointer flex-1 ${isSparePartsColumn ? 'font-medium text-orange-800' : ''}`}>
-                                    {column}
-                                    {isSparePartsColumn && <span className="ml-1 text-xs">🔧</span>}
-                                  </Label>
-                                </div>
-                              )
-                            })}
-                          </div>
-                          
-                          {(selectedColumns[fieldType] || []).length > 0 && (
-                            <Badge variant={isSparePartsField ? "default" : "secondary"} className={`text-xs ${isSparePartsField ? 'bg-orange-100 text-orange-800' : ''}`}>
-                              {selectedColumns[fieldType].length} column{selectedColumns[fieldType].length > 1 ? 's' : ''} selected
-                            </Badge>
-                          )}
                         </div>
-                      )
-                    })
+                        
+                        <div className="grid grid-cols-1 gap-2 pl-4 border-l-2 border-muted">
+                          {(availableColumns[fieldType] || []).map((column) => (
+                            <div key={`${fieldType}-${column}`} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`${fieldType}-${column}`}
+                                checked={(selectedColumns[fieldType] || []).includes(column)}
+                                onCheckedChange={(checked) => handleColumnSelection(checked, fieldType, column)}
+                              />
+                              <Label htmlFor={`${fieldType}-${column}`} className="text-sm cursor-pointer flex-1">
+                                {column}
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {(selectedColumns[fieldType] || []).length > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {selectedColumns[fieldType].length} column{selectedColumns[fieldType].length > 1 ? 's' : ''} selected
+                          </Badge>
+                        )}
+                      </div>
+                    ))
                   )}
                 </CardContent>
               </Card>
@@ -850,7 +878,6 @@ export default function ReportsPage() {
                     {selectedTrucks.length > 0 && selectedFields.length > 0 && Object.values(selectedColumns).reduce((sum, cols) => sum + cols.length, 0) > 0 && (
                       <p className="text-green-600 text-xs">
                         Ready to generate: {selectedTrucks.includes('all') ? trucks.length : selectedTrucks.length} trucks, {selectedFields.length} fields, {Object.values(selectedColumns).reduce((sum, cols) => sum + cols.length, 0)} columns
-                        {selectedFields.includes('spares') && <span className="ml-2">🔧 Spare Parts Included</span>}
                       </p>
                     )}
                   </div>
@@ -859,16 +886,13 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* FIXED: Generated Report Preview Section */}
+          {/* Generated Report Preview */}
           {generatedReport && (
             <Card className="mt-8">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
                   Generated Report Preview
-                  {generatedReport.metadata?.sparePartsFocus && (
-                    <Badge className="bg-orange-100 text-orange-800">🔧 Spare Parts Focus</Badge>
-                  )}
                 </CardTitle>
                 <CardDescription>
                   Generated on {format(new Date(generatedReport.metadata.generatedAt), 'MMM dd, yyyy HH:mm')} • 
@@ -905,16 +929,13 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
-                {/* FIXED: Actual Data Tables Preview */}
+                {/* Data Tables Preview */}
                 <div className="space-y-6">
                   {Object.keys(selectedColumns || {}).map(fieldType => {
                     const records = generatedReport.data?.[fieldType] || []
                     const columns = selectedColumns[fieldType] || []
                     
                     if (records.length === 0 || columns.length === 0) return null
-                    
-                    const isSparePartsRelated = fieldType === 'spares' || 
-                      columns.some((col: string) => col.toLowerCase().includes('spare') || col.toLowerCase().includes('parts'))
                     
                     const fieldTitles = {
                       maintenance: 'Maintenance Records',
@@ -925,16 +946,15 @@ export default function ReportsPage() {
                     }
                     
                     return (
-                      <div key={fieldType} className={`bg-gradient-to-r ${isSparePartsRelated ? 'from-orange-50 to-amber-50' : 'from-blue-50 to-indigo-50'} p-6 rounded-xl border ${isSparePartsRelated ? 'border-orange-200' : 'border-blue-200'}`}>
+                      <div key={fieldType} className="bg-gradient-to-r from-gray-50 to-slate-50 p-6 rounded-xl border border-gray-200">
                         <div className="flex items-center justify-between mb-4">
-                          <h4 className={`font-bold text-lg flex items-center gap-2 ${isSparePartsRelated ? 'text-orange-800' : 'text-blue-800'}`}>
+                          <h4 className="font-bold text-lg flex items-center gap-2 text-gray-800">
                             {fieldType === 'maintenance' && <Wrench className="h-5 w-5" />}
                             {fieldType === 'fuel' && <Fuel className="h-5 w-5" />}
                             {fieldType === 'compliance' && <Shield className="h-5 w-5" />}
                             {fieldType === 'spares' && <Settings className="h-5 w-5" />}
                             {fieldType === 'analytics' && <TrendingUp className="h-5 w-5" />}
                             {fieldTitles[fieldType as keyof typeof fieldTitles] || fieldType}
-                            {isSparePartsRelated && <Badge className="bg-orange-100 text-orange-800 text-xs">🔧 FOCUS</Badge>}
                           </h4>
                           <Badge variant="outline" className="text-xs">
                             {records.length} records • {columns.length} columns
@@ -944,7 +964,7 @@ export default function ReportsPage() {
                         <div className="bg-white rounded-lg overflow-hidden shadow-sm border">
                           <div className="overflow-x-auto">
                             <table className="w-full">
-                              <thead className={`${isSparePartsRelated ? 'bg-gradient-to-r from-orange-600 to-orange-700' : 'bg-gradient-to-r from-blue-600 to-blue-700'} text-white`}>
+                              <thead className="bg-gradient-to-r from-gray-600 to-gray-700 text-white">
                                 <tr>
                                   {columns.map((column: string) => (
                                     <th key={column} className="px-4 py-3 text-left text-sm font-semibold">
@@ -955,7 +975,7 @@ export default function ReportsPage() {
                               </thead>
                               <tbody className="divide-y divide-gray-100">
                                 {records.slice(0, 5).map((record: any, index: number) => (
-                                  <tr key={index} className={`hover:${isSparePartsRelated ? 'bg-orange-50' : 'bg-blue-50'} transition-colors`}>
+                                  <tr key={index} className="hover:bg-gray-50 transition-colors">
                                     {columns.map((column: string) => {
                                       let value = record[column] || 'N/A'
                                       
@@ -980,18 +1000,8 @@ export default function ReportsPage() {
                                         value = `${value.toLocaleString()} units`
                                       }
                                       
-                                      // Highlight spare parts related cells
-                                      const isSpareCol = column.toLowerCase().includes('spare') || 
-                                                       column.toLowerCase().includes('parts') ||
-                                                       column.toLowerCase().includes('quantity') ||
-                                                       column.toLowerCase().includes('destination') ||
-                                                       column.toLowerCase().includes('supplier')
-                                      
                                       return (
-                                        <td 
-                                          key={column} 
-                                          className={`px-4 py-3 text-sm ${isSpareCol ? 'bg-orange-50 font-medium' : ''}`}
-                                        >
+                                        <td key={column} className="px-4 py-3 text-sm">
                                           {typeof value === 'string' && value.length > 50 
                                             ? `${value.substring(0, 50)}...` 
                                             : value
@@ -1005,7 +1015,7 @@ export default function ReportsPage() {
                                   <tr>
                                     <td 
                                       colSpan={columns.length}
-                                      className={`px-4 py-3 text-center text-sm ${isSparePartsRelated ? 'text-orange-600' : 'text-blue-600'} italic font-medium`}
+                                      className="px-4 py-3 text-center text-sm text-gray-600 italic font-medium"
                                     >
                                       ... and {records.length - 5} more records (will be included in downloaded report)
                                     </td>
@@ -1064,23 +1074,6 @@ export default function ReportsPage() {
                     Close Preview
                   </Button>
                 </div>
-                
-                {/* Debug Information (Remove in production) */}
-                {process.env.NODE_ENV === 'development' && (
-                  <details className="mt-4 p-4 bg-gray-50 rounded-lg text-xs">
-                    <summary className="cursor-pointer font-medium">Debug Information</summary>
-                    <div className="mt-2 space-y-2">
-                      <div><strong>Generated Report Keys:</strong> {Object.keys(generatedReport).join(', ')}</div>
-                      <div><strong>Data Keys:</strong> {Object.keys(generatedReport.data || {}).join(', ')}</div>
-                      <div><strong>Selected Columns:</strong> {JSON.stringify(selectedColumns, null, 2)}</div>
-                      {Object.keys(generatedReport.data || {}).map(key => (
-                        <div key={key}>
-                          <strong>{key} Records:</strong> {generatedReport.data[key]?.length || 0}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
               </CardContent>
             </Card>
           )}

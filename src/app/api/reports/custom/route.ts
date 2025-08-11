@@ -3,12 +3,12 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 
-// ENHANCED: Column mapping with detailed spare parts support
+// FIXED: Real compliance mapping that matches your actual database schema
 const COLUMN_MAPPINGS = {
   maintenance: {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Service Date': 'serviceDate',
-    'Maintenance Type': 'serviceType', 
+    'Maintenance Type': 'serviceType',
     'Category': 'maintenanceCategory',
     'Description': 'description',
     'Labor Cost': 'laborCost',
@@ -16,7 +16,7 @@ const COLUMN_MAPPINGS = {
     'Technician': 'technicianName',
     'Status': 'status',
     'Mileage': 'mileageAtService',
-    // NEW: Spare Parts Columns
+    // Spare Parts Columns
     'Spare Parts Used': 'spareParts.names',
     'Spare Part Types': 'spareParts.categories',
     'Spare Parts Quantity': 'spareParts.totalQuantity',
@@ -42,6 +42,7 @@ const COLUMN_MAPPINGS = {
     'Attendant': 'attendantName',
     'Route': 'route'
   },
+  // FIXED: Only real compliance fields that exist in your database
   compliance: {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Document Type': 'documentType',
@@ -49,11 +50,9 @@ const COLUMN_MAPPINGS = {
     'Issue Date': 'issueDate',
     'Expiry Date': 'expiryDate',
     'Status': 'status',
-    'Days to Expiry': 'daysToExpiry',
     'Cost': 'cost',
-    'Authority': 'issuingAuthority'
+    'Issuing Authority': 'issuingAuthority'
   },
-  // NEW: Dedicated spare parts mapping
   spares: {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Service Date': 'maintenanceRecord.serviceDate',
@@ -71,7 +70,7 @@ const COLUMN_MAPPINGS = {
   }
 }
 
-// NEW: Enhanced spare parts data processing
+// Enhanced spare parts data processing
 function processSparePartsData(spareParts: any[]): any {
   if (!spareParts || spareParts.length === 0) {
     return {
@@ -201,7 +200,7 @@ export async function POST(request: NextRequest) {
       format = 'json'
     } = body
 
-    console.log('[DEBUG] Custom report request with spare parts focus:', JSON.stringify(body, null, 2))
+    console.log('[DEBUG] Custom report request with real compliance fields:', JSON.stringify(body, null, 2))
 
     // Build where condition
     const whereCondition: any = {}
@@ -234,7 +233,7 @@ export async function POST(request: NextRequest) {
     })
     reportData.trucks = trucks
 
-    // ENHANCED: Fetch maintenance with comprehensive spare parts data
+    // Fetch maintenance with comprehensive spare parts data
     if (fields?.includes('maintenance')) {
       const maintenanceRecords = await prisma.maintenanceRecord.findMany({
         where: whereCondition,
@@ -264,7 +263,7 @@ export async function POST(request: NextRequest) {
       reportData.maintenanceRecords = maintenanceRecords
     }
 
-    // NEW: Fetch dedicated spare parts data
+    // Fetch dedicated spare parts data
     if (fields?.includes('spares')) {
       const sparePartsRecords = await prisma.sparePart.findMany({
         where: {
@@ -311,7 +310,7 @@ export async function POST(request: NextRequest) {
       reportData.fuelRecords = fuelRecords
     }
 
-    // Fetch compliance
+    // FIXED: Fetch compliance with ONLY real database fields - no fake processing
     if (fields?.includes('compliance')) {
       const complianceDocuments = await prisma.complianceDocument.findMany({
         where: whereCondition,
@@ -339,6 +338,8 @@ export async function POST(request: NextRequest) {
       
       if (fieldType === 'spares') {
         rawData = reportData.spareParts || []
+      } else if (fieldType === 'compliance') {
+        rawData = reportData.complianceDocuments || []
       } else {
         rawData = reportData[`${fieldType}Records`] || reportData[fieldType] || []
       }
@@ -359,7 +360,7 @@ export async function POST(request: NextRequest) {
         trucksIncluded: trucks.length,
         fields: Object.keys(selectedColumns || {}),
         selectedColumns,
-        sparePartsFocus: true // NEW: Indicate spare parts focus
+        sparePartsFocus: fields?.includes('spares') || false
       },
       trucks: reportData.trucks,
       data: mappedData,
@@ -372,7 +373,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[DEBUG] Error generating spare parts focused report:', error)
+    console.error('[DEBUG] Error generating custom report:', error)
     return NextResponse.json(
       { error: 'Failed to generate report. Please try again.' },
       { status: 500 }
@@ -380,11 +381,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ENHANCED: Analytics with spare parts focus
+// Enhanced analytics with spare parts focus
 function calculateAnalyticsWithSpares(data: any) {
   const analytics: any = {}
 
-  // Fuel analytics (existing)
+  // Fuel analytics
   if (data.fuelRecords?.length > 0) {
     const fuelRecords = data.fuelRecords
     const totalLiters = fuelRecords.reduce((sum: number, r: any) => sum + (r.liters || 0), 0)
@@ -397,7 +398,7 @@ function calculateAnalyticsWithSpares(data: any) {
     }
   }
 
-  // ENHANCED: Maintenance analytics with spare parts breakdown
+  // Maintenance analytics with spare parts breakdown
   if (data.maintenanceRecords?.length > 0) {
     const maintenanceRecords = data.maintenanceRecords
     const totalLaborCost = maintenanceRecords.reduce((sum: number, r: any) => sum + (r.laborCost || 0), 0)
@@ -405,7 +406,7 @@ function calculateAnalyticsWithSpares(data: any) {
       return sum + (r.spareParts || []).reduce((pSum: number, part: any) => pSum + (part.totalPrice || 0), 0)
     }, 0)
 
-    // NEW: Detailed spare parts analytics
+    // Detailed spare parts analytics
     const allSpareParts = maintenanceRecords.flatMap((r: any) => r.spareParts || [])
     const sparePartsAnalytics = {
       totalPartsUsed: allSpareParts.length,
@@ -427,7 +428,7 @@ function calculateAnalyticsWithSpares(data: any) {
     }
   }
 
-  // NEW: Dedicated spare parts analytics
+  // Dedicated spare parts analytics
   if (data.spareParts?.length > 0) {
     const spareParts = data.spareParts
     const totalSparesCost = spareParts.reduce((sum: number, p: any) => sum + (p.totalPrice || 0), 0)
@@ -446,15 +447,30 @@ function calculateAnalyticsWithSpares(data: any) {
     }
   }
 
-  // Compliance analytics (existing)
+  // FIXED: Simple compliance analytics with real data only
   if (data.complianceDocuments?.length > 0) {
     const complianceDocuments = data.complianceDocuments
+    const now = new Date()
+    
+    const expiringCount = complianceDocuments.filter((d: any) => {
+      const daysToExpiry = Math.ceil((new Date(d.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      return daysToExpiry <= 30 && daysToExpiry > 0
+    }).length
+
+    const expiredCount = complianceDocuments.filter((d: any) => {
+      const daysToExpiry = Math.ceil((new Date(d.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      return daysToExpiry < 0
+    }).length
+    
     analytics.compliance = {
       totalCost: Math.round(complianceDocuments.reduce((sum: number, d: any) => sum + (d.cost || 0), 0) * 100) / 100,
       validCount: complianceDocuments.filter((d: any) => d.status === 'VALID').length,
-      expiringCount: complianceDocuments.filter((d: any) => d.status === 'EXPIRING').length,
-      expiredCount: complianceDocuments.filter((d: any) => d.status === 'EXPIRED').length,
-      documentsCount: complianceDocuments.length
+      expiringCount,
+      expiredCount,
+      documentsCount: complianceDocuments.length,
+      documentTypes: [...new Set(complianceDocuments.map((d: any) => d.documentType))],
+      averageRenewalCost: complianceDocuments.length > 0 ? 
+        Math.round((complianceDocuments.reduce((sum: number, d: any) => sum + (d.cost || 0), 0) / complianceDocuments.length) * 100) / 100 : 0
     }
   }
 
@@ -478,7 +494,7 @@ function calculateAnalyticsWithSpares(data: any) {
   return analytics
 }
 
-// Helper function for formatting (if not available)
+// Helper function for formatting
 function formatKSH(amount: number): string {
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',

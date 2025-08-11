@@ -16,13 +16,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No report data provided' }, { status: 400 })
     }
 
-    // Enhanced Print-Optimized Report with Spare Parts Focus (Fleet Asset Section Removed)
+    // MINIMAL, CLEAN REPORT DESIGN - No excessive graphics
     const pdfHtml = `
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Fleet Management Report - Approved Logistics</title>
+    <title>Fleet Management Report</title>
     <style>
         * {
             margin: 0;
@@ -31,10 +31,10 @@ export async function POST(request: NextRequest) {
         }
         
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Arial', sans-serif;
             background: white;
-            color: #1a1a1a;
-            line-height: 1.4;
+            color: #333;
+            line-height: 1.5;
             font-size: 11px;
         }
         
@@ -44,181 +44,89 @@ export async function POST(request: NextRequest) {
             padding: 20px;
         }
         
+        /* MINIMAL HEADER - No fancy graphics */
         .header {
-            background: #2c3e50;
-            color: white;
-            padding: 25px;
-            text-align: center;
-            border-radius: 8px;
+            border-bottom: 2px solid #333;
+            padding: 20px 0;
             margin-bottom: 30px;
-            position: relative;
-        }
-
-        .header::after {
-            content: '';
-            position: absolute;
-            bottom: 0;
-            left: 20%;
-            right: 20%;
-            height: 3px;
-            background: linear-gradient(90deg, #e67e22, #f39c12, #e67e22);
+            text-align: center;
         }
         
         .header h1 {
             font-size: 24px;
             font-weight: bold;
-            margin-bottom: 8px;
+            margin-bottom: 5px;
+            color: #333;
         }
         
         .header h2 {
-            font-size: 14px;
+            font-size: 16px;
             font-weight: normal;
             margin-bottom: 15px;
-            opacity: 0.9;
+            color: #666;
         }
         
         .header-meta {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 15px;
             font-size: 10px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
         }
         
-        .meta-item {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 8px;
-            border-radius: 4px;
-            text-align: center;
-        }
-
-        .spare-parts-focus {
-            background: #e8f5e8;
-            border: 2px solid #27ae60;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-            text-align: center;
-        }
-
-        .spare-parts-focus h3 {
-            color: #27ae60;
-            font-size: 16px;
-            margin-bottom: 8px;
-        }
-
-        .spare-parts-focus p {
-            color: #2c3e50;
-            font-size: 12px;
-        }
-        
+        /* MINIMAL SECTIONS */
         .section {
             margin-bottom: 30px;
             page-break-inside: avoid;
         }
         
-        .section-header {
-            background: #ecf0f1;
-            border-left: 4px solid #3498db;
-            padding: 12px 15px;
-            margin-bottom: 15px;
-            border-radius: 0 4px 4px 0;
-            position: relative;
-        }
-
-        .section-header.spare-parts-section {
-            background: #e8f5e8;
-            border-left-color: #27ae60;
-        }
-
-        .section-header.spare-parts-section::before {
-            content: '🔧';
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 18px;
-        }
-        
         .section-title {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
-            color: #2c3e50;
-            margin: 0;
-        }
-
-        .section-title.spare-parts-title {
-            color: #27ae60;
-        }
-
-        .section-subtitle {
-            font-size: 10px;
-            color: #7f8c8d;
-            margin-top: 4px;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
         }
         
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 25px;
-        }
-        
-        .stat-card {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
+        /* SIMPLE STATS - No colors or graphics */
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
             padding: 15px;
+            border: 1px solid #ddd;
+        }
+        
+        .stat-item {
             text-align: center;
-            position: relative;
-        }
-
-        .stat-card.spare-parts-card {
-            background: #e8f5e8;
-            border-color: #27ae60;
-        }
-
-        .stat-card.spare-parts-card::before {
-            content: '⚙️';
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            font-size: 12px;
+            flex: 1;
         }
         
         .stat-value {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 5px;
-        }
-
-        .stat-value.spare-parts-value {
-            color: #27ae60;
+            color: #333;
+            margin-bottom: 3px;
         }
         
         .stat-label {
-            font-size: 10px;
+            font-size: 9px;
             color: #666;
             text-transform: uppercase;
-            font-weight: 600;
         }
         
+        /* CLEAN DATA TABLES - Minimal design */
         .data-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 9px;
             margin: 15px 0;
-            border: 1px solid #dee2e6;
+            border: 1px solid #333;
         }
         
         .data-table thead {
-            background: #34495e;
-            color: white;
-        }
-
-        .data-table.spare-parts-table thead {
-            background: #27ae60;
+            background: #f5f5f5;
         }
         
         .data-table th {
@@ -226,122 +134,65 @@ export async function POST(request: NextRequest) {
             text-align: left;
             font-weight: bold;
             font-size: 9px;
-            border-right: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .data-table th.spare-parts-column {
-            background: #2ecc71 !important;
-            font-weight: bold;
+            border-bottom: 1px solid #333;
+            border-right: 1px solid #ddd;
         }
         
         .data-table tbody tr {
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid #ddd;
         }
         
         .data-table tbody tr:nth-child(even) {
-            background: #f8f9fa;
-        }
-
-        .data-table.spare-parts-table tbody tr:nth-child(even) {
-            background: #f1f8f1;
+            background: #fafafa;
         }
         
         .data-table td {
             padding: 6px;
-            border-right: 1px solid #dee2e6;
+            border-right: 1px solid #ddd;
             vertical-align: top;
             word-wrap: break-word;
         }
-
-        .data-table td.spare-parts-cell {
-            background: #e8f5e8 !important;
-            font-weight: 500;
-        }
-
-        .spare-parts-summary {
-            background: #e8f5e8;
-            border: 2px solid #27ae60;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-
-        .spare-parts-summary h4 {
-            color: #27ae60;
-            font-size: 14px;
-            margin-bottom: 15px;
-            text-align: center;
-            border-bottom: 2px solid #27ae60;
-            padding-bottom: 8px;
-        }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .summary-item {
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #27ae60;
-        }
-
-        .summary-item .label {
-            font-size: 10px;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .summary-item .value {
-            font-size: 14px;
-            font-weight: bold;
-            color: #27ae60;
-        }
-
-        .top-parts {
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 15px;
-        }
-
-        .top-parts h5 {
-            color: #27ae60;
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
-
-        .part-item {
-            font-size: 10px;
-            margin-bottom: 4px;
-            padding: 4px 8px;
-            background: #f8f9fa;
-            border-radius: 4px;
-            border-left: 3px solid #27ae60;
-        }
-
-        .footer {
-            background: #2c3e50;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 8px;
-            margin-top: 30px;
-        }
-
-        .report-id {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            font-family: monospace;
-            font-size: 10px;
+        
+        /* COMPLIANCE FOCUS - Minimal highlighting */
+        .compliance-section .data-table th {
+            background: #f0f0f0;
         }
         
+        .compliance-urgent {
+            background: #ffebee !important;
+        }
+        
+        .compliance-expiring {
+            background: #fff3e0 !important;
+        }
+        
+        /* SPARE PARTS FOCUS - Subtle highlighting */
+        .spares-section .data-table th {
+            background: #f5f5f5;
+        }
+        
+        .spares-cell {
+            background: #fafafa !important;
+            font-weight: 500;
+        }
+        
+        /* MINIMAL FOOTER */
+        .footer {
+            border-top: 1px solid #333;
+            padding: 15px 0;
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+            margin-top: 30px;
+        }
+        
+        .report-info {
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 9px;
+        }
+        
+        /* PRINT OPTIMIZATIONS */
         @media print {
             body {
                 font-size: 9px;
@@ -364,10 +215,6 @@ export async function POST(request: NextRequest) {
             .data-table td {
                 padding: 4px 3px;
             }
-            
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
         }
         
         @page {
@@ -385,181 +232,162 @@ export async function POST(request: NextRequest) {
 </head>
 <body>
     <div class="container">
+        <!-- MINIMAL HEADER -->
         <div class="header">
             <h1>APPROVED LOGISTICS LIMITED</h1>
             <h2>Fleet Management Report</h2>
             
             <div class="header-meta">
-                <div class="meta-item">
-                    <div><strong>Generated:</strong></div>
-                    <div>${new Date(report.metadata.generatedAt).toLocaleDateString()}</div>
-                </div>
-                <div class="meta-item">
-                    <div><strong>Report Type:</strong></div>
-                    <div>${report.metadata.reportType || 'Custom'}</div>
-                </div>
-                <div class="meta-item">
-                    <div><strong>Generated By:</strong></div>
-                    <div>${report.metadata.generatedBy}</div>
-                </div>
+                <span><strong>Generated:</strong> ${new Date(report.metadata.generatedAt).toLocaleDateString()}</span>
+                <span><strong>Type:</strong> ${report.metadata.reportType || 'Custom'}</span>
+                <span><strong>By:</strong> ${report.metadata.generatedBy}</span>
             </div>
         </div>
 
-        ${report.metadata?.sparePartsFocus ? `
-        <div class="spare-parts-focus">
-            <h3>🔧 SPARE PARTS FOCUSED REPORT</h3>
-            <p>This report emphasizes spare parts data including quantity, pricing, installation locations, and cost analysis as requested by management.</p>
-        </div>
-        ` : ''}
-
+        <!-- SIMPLE FINANCIAL SUMMARY -->
         <div class="section">
-            <div class="section-header">
-                <h3 class="section-title">💰 Financial Overview</h3>
-                <div class="section-subtitle">Comprehensive operational cost breakdown</div>
-            </div>
+            <div class="section-title">Financial Summary</div>
             
-            <div class="stats-grid">
-                <div class="stat-card">
+            <div class="stats-row">
+                <div class="stat-item">
                     <div class="stat-value">${formatKSH(report.analytics?.overall?.totalOperationalCost || 0)}</div>
                     <div class="stat-label">Total Operational Cost</div>
                 </div>
                 ${report.analytics?.fuel ? `
-                <div class="stat-card">
+                <div class="stat-item">
                     <div class="stat-value">${formatKSH(report.analytics.fuel.totalCost)}</div>
                     <div class="stat-label">Fuel Expenses</div>
                 </div>
                 ` : ''}
                 ${report.analytics?.maintenance ? `
-                <div class="stat-card">
+                <div class="stat-item">
                     <div class="stat-value">${formatKSH(report.analytics.maintenance.totalLaborCost)}</div>
                     <div class="stat-label">Labor Costs</div>
                 </div>
-                <div class="stat-card spare-parts-card">
-                    <div class="stat-value spare-parts-value">${formatKSH(report.analytics.maintenance.totalPartsCost)}</div>
-                    <div class="stat-label">Spare Parts Investment</div>
+                <div class="stat-item">
+                    <div class="stat-value">${formatKSH(report.analytics.maintenance.totalPartsCost)}</div>
+                    <div class="stat-label">Spare Parts</div>
                 </div>
                 ` : ''}
             </div>
         </div>
 
-        ${report.analytics?.spareParts ? `
-        <div class="spare-parts-summary">
-            <h4>⚙️ SPARE PARTS INVESTMENT ANALYSIS</h4>
-            <div class="summary-grid">
-                <div class="summary-item">
-                    <div class="label">Total Parts Investment</div>
-                    <div class="value">${formatKSH(report.analytics.spareParts.totalCost)}</div>
+        <!-- COMPLIANCE SUMMARY (if compliance data exists) -->
+        ${report.analytics?.compliance ? `
+        <div class="section">
+            <div class="section-title">Compliance Status Summary</div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="stat-value">${report.analytics.compliance.documentsCount}</div>
+                    <div class="stat-label">Total Documents</div>
                 </div>
-                <div class="summary-item">
-                    <div class="label">Total Parts Quantity</div>
-                    <div class="value">${report.analytics.spareParts.totalQuantity} units</div>
+                <div class="stat-item">
+                    <div class="stat-value">${report.analytics.compliance.validCount}</div>
+                    <div class="stat-label">Valid</div>
                 </div>
-                <div class="summary-item">
-                    <div class="label">Average Cost per Part</div>
-                    <div class="value">${formatKSH(report.analytics.spareParts.averageCostPerPart)}</div>
+                <div class="stat-item">
+                    <div class="stat-value">${report.analytics.compliance.expiringCount}</div>
+                    <div class="stat-label">Expiring Soon</div>
                 </div>
-                <div class="summary-item">
-                    <div class="label">Different Part Types</div>
-                    <div class="value">${report.analytics.spareParts.uniquePartTypes} categories</div>
+                <div class="stat-item">
+                    <div class="stat-value">${report.analytics.compliance.expiredCount}</div>
+                    <div class="stat-label">Expired</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${report.analytics.compliance.urgentCount}</div>
+                    <div class="stat-label">Urgent</div>
                 </div>
             </div>
-            
-            ${report.analytics.spareParts.topPartsByValue?.length > 0 ? `
-            <div class="top-parts">
-                <h5>🏆 Top 5 Most Expensive Parts:</h5>
-                ${report.analytics.spareParts.topPartsByValue.slice(0, 5).map((part: any, index: number) => `
-                <div class="part-item">
-                    ${index + 1}. ${part.name} - <strong>${formatKSH(part.cost)}</strong>
-                </div>
-                `).join('')}
-            </div>
-            ` : ''}
         </div>
         ` : ''}
 
+        <!-- DATA TABLES - CLEAN AND MINIMAL -->
         ${Object.keys(selectedColumns || {}).map(fieldType => {
           if (!selectedColumns[fieldType]?.length || !report.data[fieldType]?.length) return '';
           
           const fieldTitles = {
-            maintenance: 'Maintenance Records with Spare Parts Details',
-            fuel: 'Fuel Consumption Records', 
-            compliance: 'Compliance Documentation',
-            analytics: 'Performance Analytics',
-            spares: '🔧 DETAILED SPARE PARTS ANALYSIS'
+            maintenance: 'Maintenance Records',
+            fuel: 'Fuel Records', 
+            compliance: 'Compliance Documents',
+            analytics: 'Analytics Data',
+            spares: 'Spare Parts Details'
           };
           
-          const isSparePartsRelated = fieldType === 'spares' || 
-            (fieldType === 'maintenance' && selectedColumns[fieldType].some((col: string) => 
-              col.toLowerCase().includes('spare') || col.toLowerCase().includes('parts')
-            ));
+          const isCompliance = fieldType === 'compliance';
+          const isSpares = fieldType === 'spares' || 
+            selectedColumns[fieldType].some((col: string) => 
+              col.toLowerCase().includes('spare') || col.toLowerCase().includes('parts'));
           
           return `
-          <div class="section">
-              <div class="section-header ${isSparePartsRelated ? 'spare-parts-section' : ''}">
-                  <h3 class="section-title ${isSparePartsRelated ? 'spare-parts-title' : ''}">${fieldTitles[fieldType] || fieldType.toUpperCase()}</h3>
-                  <div class="section-subtitle">${report.data[fieldType].length} records found</div>
-              </div>
+          <div class="section ${isCompliance ? 'compliance-section' : ''} ${isSpares ? 'spares-section' : ''}">
+              <div class="section-title">${fieldTitles[fieldType] || fieldType} (${report.data[fieldType].length} records)</div>
               
-              <table class="data-table ${isSparePartsRelated ? 'spare-parts-table' : ''}">
+              <table class="data-table">
                   <thead>
                       <tr>
-                          ${selectedColumns[fieldType].map((col: string) => {
-                            const isSpareCol = col.toLowerCase().includes('spare') || 
-                                              col.toLowerCase().includes('parts') ||
-                                              col.toLowerCase().includes('quantity') ||
-                                              col.toLowerCase().includes('destination');
-                            return `<th class="${isSpareCol ? 'spare-parts-column' : ''}">${col}</th>`;
-                          }).join('')}
+                          ${selectedColumns[fieldType].map((col: string) => `<th>${col}</th>`).join('')}
                       </tr>
                   </thead>
                   <tbody>
-                      ${report.data[fieldType].slice(0, 50).map((record: any, index: number) => `
-                      <tr>
-                          ${selectedColumns[fieldType].map((col: string) => {
-                            let value = record[col] || 'N/A';
-                            
-                            // Enhanced formatting for spare parts data
-                            if (col.toLowerCase().includes('date') && value !== 'N/A') {
-                              try {
-                                value = new Date(value).toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric'
-                                });
-                              } catch (e) {}
-                            }
-                            
-                            if (col.toLowerCase().includes('cost') && typeof value === 'number') {
-                              value = formatKSH(value);
-                            }
-                            
-                            if (col.toLowerCase().includes('quantity') && typeof value === 'number') {
-                              value = value.toLocaleString() + ' units';
-                            }
+                      ${report.data[fieldType].slice(0, 50).map((record: any, index: number) => {
+                        // Determine row class for compliance
+                        let rowClass = '';
+                        if (isCompliance && record['Critical Status']) {
+                          if (record['Critical Status'] === 'EXPIRED' || record['Critical Status'] === 'URGENT') {
+                            rowClass = 'compliance-urgent';
+                          } else if (record['Critical Status'] === 'DUE SOON') {
+                            rowClass = 'compliance-expiring';
+                          }
+                        }
+                        
+                        return `
+                        <tr class="${rowClass}">
+                            ${selectedColumns[fieldType].map((col: string) => {
+                              let value = record[col] || 'N/A';
+                              
+                              // Format data
+                              if (col.toLowerCase().includes('date') && value !== 'N/A') {
+                                try {
+                                  value = new Date(value).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  });
+                                } catch (e) {}
+                              }
+                              
+                              if (col.toLowerCase().includes('cost') && typeof value === 'number') {
+                                value = formatKSH(value);
+                              }
+                              
+                              if (col.toLowerCase().includes('quantity') && typeof value === 'number') {
+                                value = value.toLocaleString() + ' units';
+                              }
 
-                            if (col.toLowerCase().includes('price') && typeof value === 'number') {
-                              value = formatKSH(value);
-                            }
-                            
-                            // Highlight spare parts related cells
-                            const isSpareCol = col.toLowerCase().includes('spare') || 
-                                              col.toLowerCase().includes('parts') ||
-                                              col.toLowerCase().includes('quantity') ||
-                                              col.toLowerCase().includes('destination') ||
-                                              col.toLowerCase().includes('supplier');
-                            
-                            if (typeof value === 'string' && value.length > 35) {
-                              value = value.substring(0, 35) + '...';
-                            }
-                            
-                            return `<td class="${isSpareCol ? 'spare-parts-cell' : ''}">${value}</td>`;
-                          }).join('')}
-                      </tr>
-                      `).join('')}
+                              if (col.toLowerCase().includes('price') && typeof value === 'number') {
+                                value = formatKSH(value);
+                              }
+                              
+                              // Highlight spare parts cells
+                              const isSparesCol = col.toLowerCase().includes('spare') || 
+                                                col.toLowerCase().includes('parts') ||
+                                                col.toLowerCase().includes('quantity') ||
+                                                col.toLowerCase().includes('destination') ||
+                                                col.toLowerCase().includes('supplier');
+                              
+                              if (typeof value === 'string' && value.length > 40) {
+                                value = value.substring(0, 40) + '...';
+                              }
+                              
+                              return `<td class="${isSparesCol ? 'spares-cell' : ''}">${value}</td>`;
+                            }).join('')}
+                        </tr>
+                        `;
+                      }).join('')}
                       ${report.data[fieldType].length > 50 ? `
                       <tr>
-                          <td colspan="${selectedColumns[fieldType].length}" style="text-align: center; padding: 15px; background: ${isSparePartsRelated ? '#e8f5e8' : '#f8f9fa'}; font-style: italic; font-weight: 600; color: ${isSparePartsRelated ? '#27ae60' : '#666'};">
-                              📊 Showing first 50 records of ${report.data[fieldType].length} total entries
+                          <td colspan="${selectedColumns[fieldType].length}" style="text-align: center; padding: 15px; font-style: italic; color: #666;">
+                              Showing first 50 of ${report.data[fieldType].length} total records
                           </td>
                       </tr>
                       ` : ''}
@@ -569,19 +397,19 @@ export async function POST(request: NextRequest) {
           `;
         }).join('')}
 
+        <!-- MINIMAL FOOTER -->
         <div class="footer">
-            <h4>🚀 Fleet Intelligence System</h4>
-            <p>Comprehensive fleet management with specialized spare parts tracking and cost analysis</p>
+            <div><strong>Fleet Management System Report</strong></div>
+            <div>Professional fleet analysis and compliance tracking</div>
             
-            <div class="report-id">
-                <strong>Report ID:</strong> ${Math.random().toString(36).substr(2, 9).toUpperCase()} | 
-                <strong>Generated:</strong> ${new Date().toISOString().substring(0, 19)}Z
-                ${report.metadata?.sparePartsFocus ? ' | <strong>SPARE PARTS FOCUSED REPORT</strong>' : ''}
+            <div class="report-info">
+                Report ID: ${Math.random().toString(36).substr(2, 9).toUpperCase()} | 
+                Generated: ${new Date().toISOString().substring(0, 19)}Z
             </div>
             
-            <p style="margin-top: 15px; font-size: 10px;">
+            <div style="margin-top: 10px; font-size: 9px;">
                 © ${new Date().getFullYear()} Approved Logistics Limited. All rights reserved.
-            </p>
+            </div>
         </div>
     </div>
 </body>
