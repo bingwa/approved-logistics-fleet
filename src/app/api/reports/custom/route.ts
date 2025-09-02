@@ -3,7 +3,17 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 
-// FIXED: Updated maintenance columns to match your actual maintenance form fields
+// Helper function for formatting
+function formatKSH(amount: number): string {
+  return new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+// FIXED: Updated column mappings to remove invalid field references
 const COLUMN_MAPPINGS = {
   maintenance: {
     'Truck Number (Registration Plate)': 'truck.registration',
@@ -18,7 +28,6 @@ const COLUMN_MAPPINGS = {
     'Route Taken': 'routeTaken',
     'Next Service Date': 'nextServiceDate',
     'Created By': 'user.name',
-    // Simplified spare parts columns that actually exist
     'Spare Parts Used': 'spareParts.names',
     'Total Spare Parts Cost': 'spareParts.totalCost',
     'Spare Parts Count': 'spareParts.count'
@@ -51,23 +60,13 @@ const COLUMN_MAPPINGS = {
     'Quantity Used': 'quantity',
     'Unit Price': 'unitPrice',
     'Total Cost': 'totalPrice',
-    'Installation Location': 'installationLocation',
-    'Part Number': 'partNumber',
-    'Maintenance Reference': 'maintenanceRecord.description'
+    // REMOVED: 'Installation Location': 'installationLocation', (field doesn't exist)
+    // REMOVED: 'Part Number': 'partNumber', (field doesn't exist)
+    'Maintenance Reference': 'maintenanceRecord.description',
+    'Created Date': 'createdAt'
   }
 }
 
-// Helper function for formatting
-function formatKSH(amount: number): string {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: 'KES',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
-// Simplified spare parts processing
 function processSparePartsData(spareParts: any[]): any {
   if (!spareParts || spareParts.length === 0) {
     return {
@@ -93,7 +92,6 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
   return data.map(record => {
     const mappedRecord: any = {};
 
-    // Process spare parts data for maintenance records
     if (fieldType === 'maintenance' && record.spareParts) {
       record.spareParts = processSparePartsData(record.spareParts);
     }
@@ -101,7 +99,6 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
     selectedColumns.forEach(columnName => {
       const dbField = mappings[columnName];
       if (dbField) {
-        // Handle nested properties
         if (dbField.includes('.')) {
           const parts = dbField.split('.');
           let value = record;
@@ -110,7 +107,6 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
             if (value === undefined || value === null) break;
           }
 
-          // Format specific field types
           if (columnName.includes('Date') && value && value !== 'N/A') {
             try {
               value = new Date(value).toLocaleDateString('en-KE')
@@ -126,7 +122,6 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
           mappedRecord[columnName] = value || 'N/A';
         } else {
           let value = record[dbField];
-          // Format specific field types
           if (columnName.includes('Date') && value && value !== 'N/A') {
             try {
               value = new Date(value).toLocaleDateString('en-KE')
@@ -200,32 +195,36 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    // Step 4: FIXED - Ensure user exists with upsert
+    // Step 4: FIXED - Use email in where clause instead of id to prevent P2002 errors
     console.log('[DEBUG] Step 4: Ensuring user exists...')
     try {
-      const user = await prisma.user.upsert({
-        where: { 
-          id: session.user.id 
-        },
-        update: {
-          // Update existing user fields if needed
-          name: session.user.name || '',
-          email: session.user.email || '',
-        },
-        create: {
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.name || '',
-        }
-      })
+      const userEmail = session.user.email || ''
+      
+      if (!userEmail) {
+        console.log('[DEBUG] No email found, skipping user upsert')
+      } else {
+        const user = await prisma.user.upsert({
+          where: { 
+            email: userEmail  // FIXED: Use email instead of id
+          },
+          update: {
+            name: session.user.name || '',
+            id: session.user.id, // Update id if needed
+          },
+          create: {
+            id: session.user.id,
+            email: userEmail,
+            name: session.user.name || '',
+          }
+        })
 
-      console.log('[DEBUG] User ready:', user.id)
+        console.log('[DEBUG] User ready:', user.id)
+      }
     } catch (userError) {
       console.error('[DEBUG] FAIL: User upsert error:', userError)
-      return NextResponse.json({
-        error: 'User setup failed',
-        details: userError instanceof Error ? userError.message : 'Unknown user error'
-      }, { status: 500 })
+      
+      // Don't fail the entire request for user issues - continue with report generation
+      console.log('[DEBUG] Continuing without user upsert...')
     }
 
     // Step 5: Build where condition
@@ -272,7 +271,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Step 7: Fetch maintenance records if requested
+    // Step 7: Fetch data based on selected fields
     if (fields?.includes('maintenance')) {
       console.log('[DEBUG] Step 7: Fetching maintenance records...')
       try {
@@ -289,8 +288,11 @@ export async function POST(request: NextRequest) {
                 quantity: true,
                 unitPrice: true,
                 totalPrice: true,
-                installationLocation: true,
-                partNumber: true
+                // REMOVED: installationLocation (doesn't exist in schema)
+                // REMOVED: partNumber (doesn't exist in schema)
+                maintenanceRecordId: true,
+                createdAt: true,
+                updatedAt: true
               }
             },
             user: {
@@ -303,15 +305,6 @@ export async function POST(request: NextRequest) {
 
         console.log('[DEBUG] Maintenance records fetched:', maintenanceRecords.length)
         reportData.maintenanceRecords = maintenanceRecords
-
-        if (maintenanceRecords.length > 0) {
-          console.log('[DEBUG] Sample maintenance record:', {
-            id: maintenanceRecords[0].id,
-            serviceType: maintenanceRecords[0].serviceType,
-            truck: maintenanceRecords[0].truck?.registration,
-            spareParts: maintenanceRecords[0].spareParts?.length
-          })
-        }
       } catch (maintenanceError) {
         console.error('[DEBUG] FAIL: Error fetching maintenance records:', maintenanceError)
         return NextResponse.json({
@@ -321,7 +314,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch dedicated spare parts data
     if (fields?.includes('spares')) {
       console.log('[DEBUG] Fetching spare parts records...')
       try {
@@ -359,7 +351,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch fuel records
     if (fields?.includes('fuel')) {
       console.log('[DEBUG] Fetching fuel records...')
       try {
@@ -384,7 +375,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch compliance documents
     if (fields?.includes('compliance')) {
       console.log('[DEBUG] Fetching compliance documents...')
       try {
