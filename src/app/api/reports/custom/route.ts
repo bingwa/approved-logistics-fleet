@@ -57,6 +57,16 @@ const COLUMN_MAPPINGS = {
   }
 }
 
+// Helper function for formatting
+function formatKSH(amount: number): string {
+  return new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 // Simplified spare parts processing
 function processSparePartsData(spareParts: any[]): any {
   if (!spareParts || spareParts.length === 0) {
@@ -68,7 +78,6 @@ function processSparePartsData(spareParts: any[]): any {
   }
 
   const totalCost = spareParts.reduce((sum, part) => sum + (part.totalPrice || 0), 0)
-
   return {
     names: spareParts.map(p => p.name).join(', '),
     totalCost: Math.round(totalCost * 100) / 100,
@@ -78,31 +87,29 @@ function processSparePartsData(spareParts: any[]): any {
 
 function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumns: string[]) {
   if (!selectedColumns || selectedColumns.length === 0) return data;
-  
+
   const mappings = COLUMN_MAPPINGS[fieldType as keyof typeof COLUMN_MAPPINGS] || {};
-  
+
   return data.map(record => {
     const mappedRecord: any = {};
-    
+
     // Process spare parts data for maintenance records
     if (fieldType === 'maintenance' && record.spareParts) {
       record.spareParts = processSparePartsData(record.spareParts);
     }
-    
+
     selectedColumns.forEach(columnName => {
       const dbField = mappings[columnName];
-      
       if (dbField) {
         // Handle nested properties
         if (dbField.includes('.')) {
           const parts = dbField.split('.');
           let value = record;
-          
           for (const part of parts) {
             value = value?.[part];
             if (value === undefined || value === null) break;
           }
-          
+
           // Format specific field types
           if (columnName.includes('Date') && value && value !== 'N/A') {
             try {
@@ -111,15 +118,14 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
               // Keep original value if date parsing fails
             }
           }
-          
+
           if (columnName.includes('Cost') && typeof value === 'number') {
             value = formatKSH(value)
           }
-          
+
           mappedRecord[columnName] = value || 'N/A';
         } else {
           let value = record[dbField];
-          
           // Format specific field types
           if (columnName.includes('Date') && value && value !== 'N/A') {
             try {
@@ -128,18 +134,18 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
               // Keep original value if date parsing fails
             }
           }
-          
+
           if (columnName.includes('Cost') && typeof value === 'number') {
             value = formatKSH(value)
           }
-          
+
           mappedRecord[columnName] = value || 'N/A';
         }
       } else {
         mappedRecord[columnName] = 'N/A';
       }
     });
-    
+
     return mappedRecord;
   });
 }
@@ -154,12 +160,12 @@ export async function POST(request: NextRequest) {
     
     if (!session?.user?.id) {
       console.log('[DEBUG] FAIL: No session found')
-      return NextResponse.json({ 
-        error: 'Unauthorized', 
-        details: 'No valid session found' 
+      return NextResponse.json({
+        error: 'Unauthorized',
+        details: 'No valid session found'
       }, { status: 401 })
     }
-    
+
     console.log('[DEBUG] Session valid for user:', session.user.id)
 
     // Step 2: Parse request body
@@ -170,9 +176,9 @@ export async function POST(request: NextRequest) {
       console.log('[DEBUG] Request body parsed:', JSON.stringify(body, null, 2))
     } catch (parseError) {
       console.error('[DEBUG] FAIL: Error parsing request body:', parseError)
-      return NextResponse.json({ 
-        error: 'Invalid request body', 
-        details: 'Could not parse JSON from request' 
+      return NextResponse.json({
+        error: 'Invalid request body',
+        details: 'Could not parse JSON from request'
       }, { status: 400 })
     }
 
@@ -181,45 +187,51 @@ export async function POST(request: NextRequest) {
     // Step 3: Validate required fields
     console.log('[DEBUG] Step 3: Validating request...')
     if (!truckIds || !Array.isArray(truckIds) || truckIds.length === 0) {
-      return NextResponse.json({ 
-        error: 'Invalid truck selection', 
-        details: 'Please select at least one truck' 
+      return NextResponse.json({
+        error: 'Invalid truck selection',
+        details: 'Please select at least one truck'
       }, { status: 400 })
     }
 
     if (!fields || !Array.isArray(fields) || fields.length === 0) {
-      return NextResponse.json({ 
-        error: 'Invalid field selection', 
-        details: 'Please select at least one data field' 
+      return NextResponse.json({
+        error: 'Invalid field selection',
+        details: 'Please select at least one data field'
       }, { status: 400 })
     }
 
-    // Step 4: Ensure user exists
+    // Step 4: FIXED - Ensure user exists with upsert
     console.log('[DEBUG] Step 4: Ensuring user exists...')
     try {
-      let user = await prisma.user.findUnique({ where: { id: session.user.id } })
-      if (!user) {
-        console.log('[DEBUG] Creating user in database...')
-        user = await prisma.user.create({
-          data: {
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.name || '',
-          }
-        })
-      }
+      const user = await prisma.user.upsert({
+        where: { 
+          id: session.user.id 
+        },
+        update: {
+          // Update existing user fields if needed
+          name: session.user.name || '',
+          email: session.user.email || '',
+        },
+        create: {
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.name || '',
+        }
+      })
+
       console.log('[DEBUG] User ready:', user.id)
     } catch (userError) {
-      console.error('[DEBUG] FAIL: User creation error:', userError)
-      return NextResponse.json({ 
-        error: 'User setup failed', 
-        details: userError instanceof Error ? userError.message : 'Unknown user error' 
+      console.error('[DEBUG] FAIL: User upsert error:', userError)
+      return NextResponse.json({
+        error: 'User setup failed',
+        details: userError instanceof Error ? userError.message : 'Unknown user error'
       }, { status: 500 })
     }
 
     // Step 5: Build where condition
     console.log('[DEBUG] Step 5: Building database query conditions...')
     const whereCondition: any = {}
+    
     if (truckIds && truckIds.length > 0 && !truckIds.includes('all')) {
       whereCondition.truckId = { in: truckIds }
     }
@@ -247,16 +259,16 @@ export async function POST(request: NextRequest) {
       reportData.trucks = trucks
 
       if (trucks.length === 0) {
-        return NextResponse.json({ 
-          error: 'No trucks found', 
-          details: 'No trucks match the selected criteria' 
+        return NextResponse.json({
+          error: 'No trucks found',
+          details: 'No trucks match the selected criteria'
         }, { status: 404 })
       }
     } catch (truckError) {
       console.error('[DEBUG] FAIL: Error fetching trucks:', truckError)
-      return NextResponse.json({ 
-        error: 'Database error fetching trucks', 
-        details: truckError instanceof Error ? truckError.message : 'Unknown truck fetch error' 
+      return NextResponse.json({
+        error: 'Database error fetching trucks',
+        details: truckError instanceof Error ? truckError.message : 'Unknown truck fetch error'
       }, { status: 500 })
     }
 
@@ -302,9 +314,9 @@ export async function POST(request: NextRequest) {
         }
       } catch (maintenanceError) {
         console.error('[DEBUG] FAIL: Error fetching maintenance records:', maintenanceError)
-        return NextResponse.json({ 
-          error: 'Database error fetching maintenance records', 
-          details: maintenanceError instanceof Error ? maintenanceError.message : 'Unknown maintenance fetch error' 
+        return NextResponse.json({
+          error: 'Database error fetching maintenance records',
+          details: maintenanceError instanceof Error ? maintenanceError.message : 'Unknown maintenance fetch error'
         }, { status: 500 })
       }
     }
@@ -328,21 +340,21 @@ export async function POST(request: NextRequest) {
           },
           orderBy: { createdAt: 'desc' }
         })
-        
+
         const flattenedSpares = sparePartsRecords.map(spare => ({
           ...spare,
           truck: spare.maintenanceRecord?.truck,
           serviceDate: spare.maintenanceRecord?.serviceDate,
           serviceType: spare.maintenanceRecord?.serviceType
         }))
-        
+
         reportData.spareParts = flattenedSpares
         console.log('[DEBUG] Spare parts records processed:', flattenedSpares.length)
       } catch (sparePartsError) {
         console.error('[DEBUG] FAIL: Error fetching spare parts:', sparePartsError)
-        return NextResponse.json({ 
-          error: 'Database error fetching spare parts', 
-          details: sparePartsError instanceof Error ? sparePartsError.message : 'Unknown spare parts fetch error' 
+        return NextResponse.json({
+          error: 'Database error fetching spare parts',
+          details: sparePartsError instanceof Error ? sparePartsError.message : 'Unknown spare parts fetch error'
         }, { status: 500 })
       }
     }
@@ -360,13 +372,14 @@ export async function POST(request: NextRequest) {
           },
           orderBy: { date: 'desc' }
         })
+
         reportData.fuelRecords = fuelRecords
         console.log('[DEBUG] Fuel records fetched:', fuelRecords.length)
       } catch (fuelError) {
         console.error('[DEBUG] FAIL: Error fetching fuel records:', fuelError)
-        return NextResponse.json({ 
-          error: 'Database error fetching fuel records', 
-          details: fuelError instanceof Error ? fuelError.message : 'Unknown fuel fetch error' 
+        return NextResponse.json({
+          error: 'Database error fetching fuel records',
+          details: fuelError instanceof Error ? fuelError.message : 'Unknown fuel fetch error'
         }, { status: 500 })
       }
     }
@@ -387,13 +400,14 @@ export async function POST(request: NextRequest) {
           },
           orderBy: { expiryDate: 'asc' }
         })
+
         reportData.complianceDocuments = complianceDocuments
         console.log('[DEBUG] Compliance documents fetched:', complianceDocuments.length)
       } catch (complianceError) {
         console.error('[DEBUG] FAIL: Error fetching compliance documents:', complianceError)
-        return NextResponse.json({ 
-          error: 'Database error fetching compliance documents', 
-          details: complianceError instanceof Error ? complianceError.message : 'Unknown compliance fetch error' 
+        return NextResponse.json({
+          error: 'Database error fetching compliance documents',
+          details: complianceError instanceof Error ? complianceError.message : 'Unknown compliance fetch error'
         }, { status: 500 })
       }
     }
@@ -401,11 +415,10 @@ export async function POST(request: NextRequest) {
     // Step 8: Process and map data
     console.log('[DEBUG] Step 8: Processing and mapping data...')
     const mappedData: any = {}
-
+    
     try {
       Object.keys(selectedColumns || {}).forEach(fieldType => {
         let rawData = []
-        
         if (fieldType === 'maintenance') {
           rawData = reportData.maintenanceRecords || []
         } else if (fieldType === 'compliance') {
@@ -415,9 +428,8 @@ export async function POST(request: NextRequest) {
         } else {
           rawData = reportData[`${fieldType}Records`] || []
         }
-        
+
         const columns = selectedColumns[fieldType] || []
-        
         console.log(`[DEBUG] Processing ${fieldType}: ${rawData.length} records, ${columns.length} columns`)
         
         if (rawData.length > 0 && columns.length > 0) {
@@ -427,9 +439,9 @@ export async function POST(request: NextRequest) {
       })
     } catch (mappingError) {
       console.error('[DEBUG] FAIL: Error mapping data:', mappingError)
-      return NextResponse.json({ 
-        error: 'Error processing report data', 
-        details: mappingError instanceof Error ? mappingError.message : 'Unknown mapping error' 
+      return NextResponse.json({
+        error: 'Error processing report data',
+        details: mappingError instanceof Error ? mappingError.message : 'Unknown mapping error'
       }, { status: 500 })
     }
 
@@ -470,10 +482,11 @@ export async function POST(request: NextRequest) {
       fuelRecords: finalReport.data.fuel?.length || 0,
       spareRecords: finalReport.data.spares?.length || 0
     })
-    console.log('[DEBUG] === CUSTOM REPORTS API SUCCESS ===')
 
-    return NextResponse.json({ 
-      success: true, 
+    console.log('[DEBUG] === CUSTOM REPORTS API SUCCESS ===')
+    
+    return NextResponse.json({
+      success: true,
       report: finalReport
     })
 
@@ -484,21 +497,11 @@ export async function POST(request: NextRequest) {
       message: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : 'No stack trace'
     })
-    
+
     return NextResponse.json({
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown server error occurred',
       timestamp: new Date().toISOString()
     }, { status: 500 })
   }
-}
-
-// Helper function for formatting
-function formatKSH(amount: number): string {
-  return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: 'KES',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
 }
