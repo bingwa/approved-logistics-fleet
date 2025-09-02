@@ -1,7 +1,7 @@
 // src/components/dashboard/MobileDashboard.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +20,7 @@ import {
   Activity
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useTrucks, useMaintenanceRecords, useFuelRecords } from '@/hooks/useFleetData'
 
 interface QuickStat {
   title: string
@@ -34,10 +35,26 @@ export function MobileDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState(new Date())
 
+  // Fetch real data
+  const { data: trucks, refetch: refetchTrucks } = useTrucks()
+  const { data: maintenanceRecords, refetch: refetchMaintenance } = useMaintenanceRecords()
+  const { data: fuelRecords, refetch: refetchFuel } = useFuelRecords()
+
+  // Calculate real stats
+  const activeTrucks = trucks?.filter(truck => truck.status === 'ACTIVE')?.length ?? 0
+  const maintenanceTrucks = trucks?.filter(truck => truck.status === 'MAINTENANCE')?.length ?? 0
+  const complianceIssues = trucks?.filter(truck => 
+    truck.complianceStatus === 'expired' || truck.complianceStatus === 'expiring'
+  )?.length ?? 0
+  
+  const avgFuelEfficiency = fuelRecords?.length
+    ? (fuelRecords.reduce((sum, record) => sum + (record.efficiencyKmpl || 0), 0) / fuelRecords.length).toFixed(1)
+    : '0.0'
+
   const quickStats: QuickStat[] = [
     {
       title: 'Active Trucks',
-      value: 8,
+      value: activeTrucks,
       change: +2,
       icon: Truck,
       color: 'text-green-600',
@@ -45,7 +62,7 @@ export function MobileDashboard() {
     },
     {
       title: 'In Maintenance',
-      value: 2,
+      value: maintenanceTrucks,
       change: -1,
       icon: Wrench,
       color: 'text-orange-600',
@@ -53,7 +70,7 @@ export function MobileDashboard() {
     },
     {
       title: 'Fuel Efficiency',
-      value: '2.8 km/L',
+      value: `${avgFuelEfficiency} km/L`,
       change: +0.2,
       icon: Fuel,
       color: 'text-blue-600',
@@ -61,7 +78,7 @@ export function MobileDashboard() {
     },
     {
       title: 'Compliance Issues',
-      value: 3,
+      value: complianceIssues,
       change: +1,
       icon: Shield,
       color: 'text-red-600',
@@ -69,37 +86,29 @@ export function MobileDashboard() {
     }
   ]
 
+  // Convert real data to recent activities
   const recentActivities = [
-    {
-      id: 1,
+    ...(fuelRecords?.slice(0, 5).map(record => ({
+      id: record.id,
       type: 'fuel',
-      truck: 'KBY 123A',
+      truck: record.truck?.registration || 'Unknown',
       action: 'Fuel recorded',
-      time: '2 hours ago',
-      amount: 'KSh 7,500'
-    },
-    {
-      id: 2,
+      time: new Date(record.date).toLocaleDateString(),
+      amount: `KSh ${record.totalCost?.toLocaleString() || '0'}`
+    })) || []),
+    ...(maintenanceRecords?.slice(0, 3).map(record => ({
+      id: record.id,
       type: 'maintenance',
-      truck: 'KCA 456B',
-      action: 'Service completed',
-      time: '5 hours ago',
-      amount: 'KSh 25,000'
-    },
-    {
-      id: 3,
-      type: 'compliance',
-      truck: 'KDB 789C',
-      action: 'Insurance expiring',
-      time: '1 day ago',
-      amount: 'In 30 days'
-    }
-  ]
+      truck: record.truck?.registration || 'Unknown',
+      action: record.serviceType || 'Service completed',
+      time: new Date(record.date).toLocaleDateString(),
+      amount: `KSh ${record.cost?.toLocaleString() || '0'}`
+    })) || [])
+  ].slice(0, 5)
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await Promise.all([refetchTrucks(), refetchMaintenance(), refetchFuel()])
     setLastRefresh(new Date())
     setIsRefreshing(false)
   }
@@ -210,7 +219,7 @@ export function MobileDashboard() {
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-64">
-                  {recentActivities.map((activity) => (
+                  {recentActivities.length > 0 ? recentActivities.map((activity) => (
                     <div
                       key={activity.id}
                       className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
@@ -235,7 +244,11 @@ export function MobileDashboard() {
                       </div>
                       <ChevronRight className="h-4 w-4 text-slate-400" />
                     </div>
-                  ))}
+                  )) : (
+                    <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+                      No recent activity
+                    </div>
+                  )}
                 </ScrollArea>
               </CardContent>
             </Card>
@@ -258,7 +271,7 @@ export function MobileDashboard() {
                           Insurance Expiring Soon
                         </p>
                         <p className="text-sm text-red-600 dark:text-red-400">
-                          KDB 789C - Expires in 5 days
+                          Documents expire in 5 days
                         </p>
                       </div>
                       <Badge variant="destructive">Critical</Badge>
@@ -272,7 +285,7 @@ export function MobileDashboard() {
                           Maintenance Overdue
                         </p>
                         <p className="text-sm text-orange-600 dark:text-orange-400">
-                          KCA 456B - 15 days overdue
+                          Scheduled maintenance pending
                         </p>
                       </div>
                       <Badge className="bg-orange-500">High</Badge>
@@ -285,12 +298,8 @@ export function MobileDashboard() {
           
           <TabsContent value="trucks" className="mt-4">
             <div className="space-y-3">
-              {[
-                { reg: 'KBY 123A', status: 'Active', efficiency: '2.8 km/L' },
-                { reg: 'KCA 456B', status: 'Maintenance', efficiency: '2.5 km/L' },
-                { reg: 'KDB 789C', status: 'Active', efficiency: '3.1 km/L' },
-              ].map((truck) => (
-                <Card key={truck.reg} className="cursor-pointer hover:shadow-md transition-shadow">
+              {trucks?.map((truck) => (
+                <Card key={truck.id} className="cursor-pointer hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
@@ -299,18 +308,18 @@ export function MobileDashboard() {
                         </div>
                         <div>
                           <p className="font-semibold text-slate-900 dark:text-slate-100">
-                            {truck.reg}
+                            {truck.registration}
                           </p>
                           <p className="text-sm text-slate-600 dark:text-slate-400">
-                            Efficiency: {truck.efficiency}
+                            {truck.make} {truck.model}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <Badge
-                          variant={truck.status === 'Active' ? 'default' : 'secondary'}
+                          variant={truck.status === 'ACTIVE' ? 'default' : 'secondary'}
                           className={
-                            truck.status === 'Active'
+                            truck.status === 'ACTIVE'
                               ? 'bg-green-500'
                               : 'bg-orange-500'
                           }
@@ -322,7 +331,11 @@ export function MobileDashboard() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              )) || (
+                <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+                  No trucks found
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>

@@ -1,4 +1,3 @@
-// src/app/(dashboard)/reports/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -35,7 +34,7 @@ interface Truck {
   model: string
 }
 
-// FIXED: Real compliance columns that match your actual database schema
+// Real compliance columns that match your actual database schema
 const REPORT_TYPE_COLUMNS = {
   comprehensive: {
     maintenance: [
@@ -56,7 +55,6 @@ const REPORT_TYPE_COLUMNS = {
       "Parts Supplier/Vendor"
     ],
     fuel: ["Truck Number (Registration Plate)", "Date", "Liters", "Cost per Liter", "Total Cost", "Distance", "Efficiency", "Attendant", "Route"],
-    // FIXED: Real compliance columns based on your actual compliance form
     compliance: [
       "Truck Number (Registration Plate)", 
       "Document Type", 
@@ -148,7 +146,6 @@ const REPORT_TYPE_COLUMNS = {
     ]
   },
   compliance: {
-    // FIXED: Only real compliance fields that exist in your database
     compliance: [
       "Truck Number (Registration Plate)", 
       "Document Type", 
@@ -165,16 +162,22 @@ const REPORT_TYPE_COLUMNS = {
   },
   'single-truck': {
     maintenance: [
+      "Truck Number (Registration Plate)", 
       "Service Date", 
       "Maintenance Type", 
-      "Description", 
-      "Labor Cost", 
-      "Vendor", 
-      "Technician", 
+      "Description",
+      "Labor Cost",
+      "Vendor Name",
+      "Technician Name", 
       "Status",
-      "Spare Parts Details",
-      "Parts Cost Analysis",
-      "Parts Installation Location"
+      "Mileage at Service",
+      "Route Taken",
+      "Next Service Date",
+      "Created By",
+      // Simplified spare parts columns
+      "Spare Parts Used",
+      "Total Spare Parts Cost",
+      "Spare Parts Count"
     ],
     fuel: ["Date", "Liters", "Cost per Liter", "Total Cost", "Distance", "Efficiency", "Route"],
     compliance: [
@@ -220,7 +223,6 @@ export default function ReportsPage() {
   const [availableColumns, setAvailableColumns] = useState<{[key: string]: string[]}>({})
   const [selectedColumns, setSelectedColumns] = useState<{[key: string]: string[]}>({})
 
-  // FIXED: Removed badges from field descriptions
   const reportFields = [
     { id: 'maintenance', label: 'Maintenance Records', icon: Wrench, description: 'Service and repair records' },
     { id: 'fuel', label: 'Fuel Records', icon: Fuel, description: 'Fuel consumption and costs' },
@@ -425,7 +427,8 @@ export default function ReportsPage() {
         format: 'json'
       }
       
-      console.log('[DEBUG] Sending payload:', payload)
+      console.log('[DEBUG] === FRONTEND REPORT GENERATION ===')
+      console.log('[DEBUG] Sending payload:', JSON.stringify(payload, null, 2))
       
       const response = await fetch('/api/reports/custom', {
         method: 'POST',
@@ -433,17 +436,66 @@ export default function ReportsPage() {
         body: JSON.stringify(payload)
       })
 
-      if (response.ok) {
-        const result = await response.json()
+      console.log('[DEBUG] Response status:', response.status)
+      console.log('[DEBUG] Response headers:', Object.fromEntries(response.headers.entries()))
+      console.log('[DEBUG] Response ok:', response.ok)
+
+      // Handle different response types
+      const contentType = response.headers.get('content-type')
+      console.log('[DEBUG] Content type:', contentType)
+
+      let result
+      let errorText
+      
+      try {
+        if (contentType?.includes('application/json')) {
+          result = await response.json()
+          console.log('[DEBUG] JSON response received:', result)
+        } else {
+          errorText = await response.text()
+          console.log('[DEBUG] Text response received:', errorText)
+        }
+      } catch (parseError) {
+        console.error('[DEBUG] Error parsing response:', parseError)
+        errorText = await response.text()
+        console.log('[DEBUG] Raw response text:', errorText)
+      }
+
+      if (response.ok && result) {
+        console.log('[DEBUG] === SUCCESS RESPONSE ===')
+        console.log('[DEBUG] Report data keys:', Object.keys(result.report?.data || {}))
+        console.log('[DEBUG] Maintenance records:', result.report?.data?.maintenance?.length || 0)
+        
         setGeneratedReport(result.report)
         toast.success('Custom report generated successfully!')
       } else {
-        const error = await response.json()
-        toast.error(error.error || 'Failed to generate report')
+        // Handle error responses
+        console.error('[DEBUG] === ERROR RESPONSE ===')
+        console.error('[DEBUG] Status:', response.status)
+        console.error('[DEBUG] Result:', result)
+        console.error('[DEBUG] Error text:', errorText)
+        
+        let errorMessage = 'Failed to generate report'
+        
+        if (result && result.error) {
+          errorMessage = result.error
+          if (result.details) {
+            console.error('[DEBUG] Error details:', result.details)
+            errorMessage += ': ' + result.details
+          }
+        } else if (errorText) {
+          errorMessage = errorText.length > 100 ? errorText.substring(0, 100) + '...' : errorText
+        }
+        
+        toast.error(errorMessage)
       }
     } catch (error) {
-      console.error('Error generating custom report:', error)
-      toast.error('Failed to generate report')
+      console.error('[DEBUG] === FETCH ERROR ===')
+      console.error('[DEBUG] Network/Fetch error:', error)
+      console.error('[DEBUG] Error name:', error instanceof Error ? error.name : 'Unknown')
+      console.error('[DEBUG] Error message:', error instanceof Error ? error.message : 'Unknown error')
+      
+      toast.error('Network error: Failed to connect to the server')
     } finally {
       setIsGenerating(false)
     }

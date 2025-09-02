@@ -1,5 +1,3 @@
-// src/components/forms/AddComplianceDocumentForm.tsx
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -9,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CalendarIcon, Loader2, Upload, FileText, X } from 'lucide-react'
+import { CalendarIcon, Loader2, Upload, FileText, X, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -19,8 +17,15 @@ interface AddComplianceDocumentFormProps {
   onCancel: () => void
 }
 
+interface Truck {
+  id: string
+  registration: string
+  make: string
+  model: string
+}
+
 export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddComplianceDocumentFormProps) {
-  const [trucks, setTrucks] = useState([])
+  const [trucks, setTrucks] = useState<Truck[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [issueDateOpen, setIssueDateOpen] = useState(false)
@@ -29,6 +34,8 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
   const [expiryDate, setExpiryDate] = useState<Date>()
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
   const [formData, setFormData] = useState({
     truckId: '',
     documentType: '',
@@ -44,13 +51,20 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
   const fetchTrucks = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/trucks')
+      const response = await fetch('/api/trucks', {
+        cache: 'no-store'
+      })
+      
       if (response.ok) {
         const data = await response.json()
         setTrucks(data.trucks || [])
+        console.log('✅ Loaded trucks:', data.trucks?.length || 0)
+      } else {
+        console.error('❌ Failed to fetch trucks:', response.status)
+        toast.error('Failed to load trucks')
       }
     } catch (error) {
-      console.error('Error fetching trucks:', error)
+      console.error('❌ Error fetching trucks:', error)
       toast.error('Failed to load trucks')
     } finally {
       setIsLoading(false)
@@ -59,6 +73,31 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    // Clear field error when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => ({ ...prev, [field]: '' }))
+    }
+  }
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.truckId) errors.truckId = 'Please select a truck'
+    if (!formData.documentType) errors.documentType = 'Please select document type'
+    if (!formData.certificateNumber.trim()) errors.certificateNumber = 'Certificate number is required'
+    if (!issueDate) errors.issueDate = 'Issue date is required'
+    if (!formData.issuingAuthority.trim()) errors.issuingAuthority = 'Issuing authority is required'
+    if (!formData.cost.trim() || isNaN(parseFloat(formData.cost))) {
+      errors.cost = 'Please enter a valid cost amount'
+    }
+
+    // Date validation
+    if (issueDate && expiryDate && expiryDate <= issueDate) {
+      errors.expiryDate = 'Expiry date must be after issue date'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
   }
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,7 +131,6 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
 
   const removeUploadedFile = () => {
     setUploadedFile(null)
-    // Reset the file input
     const fileInput = document.getElementById('documentFile') as HTMLInputElement
     if (fileInput) {
       fileInput.value = ''
@@ -102,21 +140,19 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
   const uploadFileToStorage = async (file: File): Promise<string | null> => {
     try {
       setUploadProgress(10)
-      // Create FormData for file upload
       const formData = new FormData()
       formData.append('file', file)
       formData.append('type', 'compliance')
-
+      
       setUploadProgress(30)
-
-      // Upload to your file storage endpoint
+      
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       })
-
+      
       setUploadProgress(70)
-
+      
       if (response.ok) {
         const data = await response.json()
         setUploadProgress(100)
@@ -125,7 +161,7 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
         throw new Error('Upload failed')
       }
     } catch (error) {
-      console.error('Error uploading file:', error)
+      console.error('❌ Error uploading file:', error)
       setUploadProgress(0)
       return null
     }
@@ -133,61 +169,51 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    // Validation - NOTE: uploadedFile is NOT required here
-    if (!formData.truckId || !formData.documentType || !formData.certificateNumber ||
-        !issueDate || !formData.issuingAuthority) {
-      toast.error('Please fill in all required fields')
+    
+    console.log('🚀 Form submission started')
+    
+    // Validate form
+    if (!validateForm()) {
+      console.log('❌ Form validation failed:', formErrors)
+      toast.error('Please fix the errors in the form')
       return
     }
 
-    // Calculate days to expiry
-    const today = new Date()
-    let daysToExpiry = 0
-    if (expiryDate) {
-      daysToExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-    }
-
-    // Determine status
-    let status = 'VALID'
-    if (expiryDate) {
-      if (daysToExpiry < 0) {
-        status = 'EXPIRED'
-      } else if (daysToExpiry <= 30) {
-        status = 'EXPIRING'
-      }
-    }
+    console.log('✅ Form validation passed')
 
     try {
       setIsSubmitting(true)
-
+      
       // Upload file if exists
       let documentUrl = ''
       if (uploadedFile) {
+        console.log('📤 Uploading file:', uploadedFile.name)
         toast.info('Uploading document...')
+        
         documentUrl = await uploadFileToStorage(uploadedFile)
         if (!documentUrl) {
           toast.error('Failed to upload document. Please try again.')
-          setIsSubmitting(false)
           return
         }
+        
+        console.log('✅ File uploaded successfully')
       }
 
+      // Prepare compliance data
       const complianceData = {
         truckId: formData.truckId,
         documentType: formData.documentType,
-        documentNumber: formData.certificateNumber, // Map certificateNumber to documentNumber
-        issueDate: issueDate.toISOString(),
+        certificateNumber: formData.certificateNumber.trim(),
+        issueDate: issueDate!.toISOString(),
         expiryDate: expiryDate ? expiryDate.toISOString() : null,
-        issuingAuthority: formData.issuingAuthority,
-        documentUrl: documentUrl,
-        status
+        cost: parseFloat(formData.cost),
+        issuingAuthority: formData.issuingAuthority.trim(),
+        documentUrl: documentUrl || null
       }
 
-      // 🔹 DEBUG: Log payload to browser console
-      console.log('[DEBUG] Sending compliance payload to /api/compliance:')
-      console.log(JSON.stringify(complianceData, null, 2))
+      console.log('[DEBUG] Sending compliance payload:', JSON.stringify(complianceData, null, 2))
 
+      // Make API request with enhanced error handling
       const response = await fetch('/api/compliance', {
         method: 'POST',
         headers: {
@@ -196,19 +222,61 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
         body: JSON.stringify(complianceData)
       })
 
-      if (response.ok) {
-        toast.success('Compliance document added successfully!')
+      console.log('[DEBUG] Response status:', response.status)
+      console.log('[DEBUG] Response headers:', Object.fromEntries(response.headers.entries()))
+
+      // Get response text first to debug
+      const responseText = await response.text()
+      console.log('[DEBUG] Raw response text:', responseText)
+
+      // Parse response
+      let responseData: any
+      try {
+        responseData = JSON.parse(responseText)
+        console.log('[DEBUG] Parsed response data:', responseData)
+      } catch (parseError) {
+        console.error('[DEBUG] Failed to parse response as JSON:', parseError)
+        console.error('[DEBUG] Raw response was:', responseText)
+        toast.error('Invalid server response - check console for details')
+        return
+      }
+
+      // Handle success
+      if (response.ok && responseData.success) {
+        console.log('[DEBUG] ✅ Success response:', responseData)
+        toast.success(responseData.message || 'Compliance document added successfully!')
         onSuccess()
         onCancel()
-      } else {
-        const error = await response.json()
-        toast.error(error.error || 'Failed to add compliance document')
-        // 🔹 DEBUG: Log backend error response
-        console.error('[DEBUG] Backend POST /api/compliance returned error:', error)
+        return
       }
-    } catch (error) {
-      console.error('Error adding compliance document:', error)
-      toast.error('Failed to add compliance document')
+
+      // Handle API errors
+      console.error('[DEBUG] ❌ API error response:', responseData)
+      
+      let errorMessage = 'Failed to add compliance document'
+      
+      if (responseData.error) {
+        errorMessage = responseData.error
+      } else if (responseData.details) {
+        errorMessage = responseData.details
+      } else if (responseData.message) {
+        errorMessage = responseData.message
+      } else if (!response.ok) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`
+      }
+
+      // Show specific error details if available
+      if (responseData.missingFields && Array.isArray(responseData.missingFields)) {
+        errorMessage = `Missing required fields: ${responseData.missingFields.join(', ')}`
+      }
+
+      console.error('[DEBUG] Displaying error to user:', errorMessage)
+      toast.error(errorMessage)
+
+    } catch (networkError: any) {
+      console.error('[DEBUG] ❌ Network/fetch error:', networkError)
+      const errorMessage = networkError?.message || 'Network error - please check your connection'
+      toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
       setUploadProgress(0)
@@ -233,73 +301,124 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin" />
-        <span className="ml-2">Loading trucks...</span>
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading trucks...</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg border">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Truck Selection */}
-        <div>
-          <Label>Truck *</Label>
-          <Select onValueChange={(value) => handleInputChange('truckId', value)}>
-            <SelectTrigger>
+        <div className="space-y-2">
+          <Label htmlFor="truckId">Truck *</Label>
+          <Select 
+            value={formData.truckId} 
+            onValueChange={(value) => handleInputChange('truckId', value)}
+          >
+            <SelectTrigger className={cn(formErrors.truckId && "border-red-500")}>
               <SelectValue placeholder="Select truck" />
             </SelectTrigger>
             <SelectContent>
-              {trucks.map((truck: any) => (
+              {trucks.map((truck) => (
                 <SelectItem key={truck.id} value={truck.id}>
                   {truck.registration} - {truck.make} {truck.model}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {formErrors.truckId && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.truckId}
+            </p>
+          )}
         </div>
 
         {/* Document Type */}
-        <div>
-          <Label>Document Type *</Label>
-          <Select onValueChange={(value) => handleInputChange('documentType', value)}>
-            <SelectTrigger>
+        <div className="space-y-2">
+          <Label htmlFor="documentType">Document Type *</Label>
+          <Select 
+            value={formData.documentType} 
+            onValueChange={(value) => handleInputChange('documentType', value)}
+          >
+            <SelectTrigger className={cn(formErrors.documentType && "border-red-500")}>
               <SelectValue placeholder="Select document type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="NTSA Inspection">NTSA Inspection</SelectItem>
-              <SelectItem value="Insurance Certificate">Insurance Certificate</SelectItem>
-              <SelectItem value="TGL License">TGL License</SelectItem>
-              <SelectItem value="Commercial License">Commercial License</SelectItem>
+              <SelectItem value="NTSA_INSPECTION">NTSA Inspection</SelectItem>
+              <SelectItem value="INSURANCE">Insurance Certificate</SelectItem>
+              <SelectItem value="TGL_LICENSE">TGL License</SelectItem>
+              <SelectItem value="COMMERCIAL_LICENSE">Commercial License</SelectItem>
+              <SelectItem value="ROAD_LICENSE">Road License</SelectItem>
+              <SelectItem value="OPERATING_LICENSE">Operating License</SelectItem>
             </SelectContent>
           </Select>
+          {formErrors.documentType && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.documentType}
+            </p>
+          )}
         </div>
 
         {/* Certificate Number */}
-        <div>
-          <Label>Certificate Number *</Label>
+        <div className="space-y-2">
+          <Label htmlFor="certificateNumber">Certificate Number *</Label>
           <Input
+            id="certificateNumber"
             value={formData.certificateNumber}
             onChange={(e) => handleInputChange('certificateNumber', e.target.value)}
             placeholder="Enter certificate number"
-            required
+            className={cn(formErrors.certificateNumber && "border-red-500")}
           />
+          {formErrors.certificateNumber && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.certificateNumber}
+            </p>
+          )}
+        </div>
+
+        {/* Cost Field */}
+        <div className="space-y-2">
+          <Label htmlFor="cost">Cost (KSh) *</Label>
+          <Input
+            id="cost"
+            type="number"
+            step="0.01"
+            min="0"
+            value={formData.cost}
+            onChange={(e) => handleInputChange('cost', e.target.value)}
+            placeholder="Enter document cost"
+            className={cn(formErrors.cost && "border-red-500")}
+          />
+          {formErrors.cost && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.cost}
+            </p>
+          )}
         </div>
 
         {/* Issue Date */}
-        <div>
+        <div className="space-y-2">
           <Label>Issue Date *</Label>
           <Popover open={issueDateOpen} onOpenChange={setIssueDateOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !issueDate && 'text-muted-foreground'
+                  "w-full justify-start text-left font-normal",
+                  !issueDate && "text-muted-foreground",
+                  formErrors.issueDate && "border-red-500"
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {issueDate ? format(issueDate, "PPP") : "Pick issue date"}
+                {issueDate ? format(issueDate, "PPP") : <span>Pick issue date</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -309,27 +428,37 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
                 onSelect={(date) => {
                   setIssueDate(date!)
                   setIssueDateOpen(false)
+                  if (formErrors.issueDate) {
+                    setFormErrors(prev => ({ ...prev, issueDate: '' }))
+                  }
                 }}
                 initialFocus
               />
             </PopoverContent>
           </Popover>
+          {formErrors.issueDate && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.issueDate}
+            </p>
+          )}
         </div>
 
         {/* Expiry Date */}
-        <div>
+        <div className="space-y-2">
           <Label>Expiry Date (Optional)</Label>
           <Popover open={expiryDateOpen} onOpenChange={setExpiryDateOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
                 className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !expiryDate && 'text-muted-foreground'
+                  "w-full justify-start text-left font-normal",
+                  !expiryDate && "text-muted-foreground",
+                  formErrors.expiryDate && "border-red-500"
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {expiryDate ? format(expiryDate, "PPP") : "Pick expiry date"}
+                {expiryDate ? format(expiryDate, "PPP") : <span>Pick expiry date</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -339,131 +468,157 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
                 onSelect={(date) => {
                   setExpiryDate(date!)
                   setExpiryDateOpen(false)
+                  if (formErrors.expiryDate) {
+                    setFormErrors(prev => ({ ...prev, expiryDate: '' }))
+                  }
                 }}
                 initialFocus
               />
             </PopoverContent>
           </Popover>
-        </div>
-
-        {/* Issuing Authority */}
-        <div>
-          <Label>Issuing Authority *</Label>
-          <Input
-            value={formData.issuingAuthority}
-            onChange={(e) => handleInputChange('issuingAuthority', e.target.value)}
-            placeholder="e.g., NTSA, Insurance Company Name"
-            required
-          />
-        </div>
-        
-        {/* Add this field after Issuing Authority */}
-<div>
-  <Label>Cost (KSh) *</Label>
-  <Input
-    type="number"
-    min="0"
-    step="0.01"
-    value={formData.cost}
-    onChange={(e) => handleInputChange('cost', e.target.value)}
-    placeholder="Enter document cost"
-    required
-  />
-</div>
-{/* Document Upload - OPTIONAL */}
-        <div>
-          <Label>Upload Document (Optional)</Label>
-          <p className="text-sm text-muted-foreground mb-2">
-            Upload the compliance document (PDF, Word, or Image files up to 10MB)
-          </p>
-
-          {!uploadedFile ? (
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <input
-                id="documentFile"
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                onChange={handleFileUpload}
-              />
-              <label htmlFor="documentFile" className="cursor-pointer">
-                <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm font-medium text-gray-600">Click to upload document</p>
-                <p className="text-xs text-gray-500">PDF, DOC, DOCX, JPG, PNG up to 10MB</p>
-              </label>
-            </div>
-          ) : (
-            <div className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="text-lg">{getFileIcon(uploadedFile.type)}</span>
-                  <div>
-                    <p className="font-medium text-sm">{uploadedFile.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {formatFileSize(uploadedFile.size)} • {uploadedFile.type}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={removeUploadedFile}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Upload Progress */}
-              {uploadProgress > 0 && uploadProgress < 100 && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Uploading...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-            </div>
+          {formErrors.expiryDate && (
+            <p className="text-sm text-red-500 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {formErrors.expiryDate}
+            </p>
           )}
+        </div>
+      </div>
 
-          {/* Alternative Upload Button */}
-          {uploadedFile && (
+      {/* Issuing Authority */}
+      <div className="space-y-2">
+        <Label htmlFor="issuingAuthority">Issuing Authority *</Label>
+        <Input
+          id="issuingAuthority"
+          value={formData.issuingAuthority}
+          onChange={(e) => handleInputChange('issuingAuthority', e.target.value)}
+          placeholder="e.g., NTSA, Insurance Company Name"
+          className={cn(formErrors.issuingAuthority && "border-red-500")}
+        />
+        {formErrors.issuingAuthority && (
+          <p className="text-sm text-red-500 flex items-center">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            {formErrors.issuingAuthority}
+          </p>
+        )}
+      </div>
+
+      {/* Document Upload */}
+      <div className="space-y-2">
+        <Label htmlFor="documentFile">Upload Document (Optional)</Label>
+        <p className="text-sm text-muted-foreground">
+          Upload the compliance document (PDF, Word, or Image files up to 10MB)
+        </p>
+
+        {!uploadedFile ? (
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+            <input
+              type="file"
+              id="documentFile"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
             <Button
               type="button"
               variant="outline"
               onClick={() => document.getElementById('documentFile')?.click()}
-              className="w-full mt-2"
+              className="mx-auto"
             >
-              <Upload className="h-4 w-4 mr-2" />
+              <Upload className="mr-2 h-4 w-4" />
+              Click to upload document
+            </Button>
+            <p className="text-sm text-muted-foreground mt-2">
+              PDF, DOC, DOCX, JPG, PNG up to 10MB
+            </p>
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <span className="text-2xl">{getFileIcon(uploadedFile.type)}</span>
+                <div>
+                  <p className="font-medium">{uploadedFile.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatFileSize(uploadedFile.size)} • {uploadedFile.type}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={removeUploadedFile}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Upload Progress */}
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Uploading...</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            {/* Replace button */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('documentFile')?.click()}
+              className="w-full mt-3"
+            >
+              <Upload className="mr-2 h-4 w-4" />
               Replace Document
             </Button>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Form Actions */}
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {uploadedFile ? 'Uploading & Adding...' : 'Adding Document...'}
-              </>
-            ) : (
-              'Add Document'
-            )}
-          </Button>
-        </div>
-      </form>
-    </div>
+        {/* Hidden file input */}
+        <input
+          type="file"
+          id="documentFile"
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+      </div>
+
+      {/* Form Actions */}
+      <div className="flex justify-end space-x-3 pt-4">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={onCancel} 
+          disabled={isSubmitting}
+        >
+          Cancel
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isSubmitting}
+          className="min-w-32"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {uploadedFile ? 'Uploading & Adding...' : 'Adding Document...'}
+            </>
+          ) : (
+            'Add Document'
+          )}
+        </Button>
+      </div>
+    </form>
   )
 }

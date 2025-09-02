@@ -3,33 +3,25 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 
-// FIXED: Real compliance mapping that matches your actual database schema
+// FIXED: Updated maintenance columns to match your actual maintenance form fields
 const COLUMN_MAPPINGS = {
   maintenance: {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Service Date': 'serviceDate',
     'Maintenance Type': 'serviceType',
-    'Category': 'maintenanceCategory',
     'Description': 'description',
     'Labor Cost': 'laborCost',
-    'Vendor': 'vendorName',
-    'Technician': 'technicianName',
+    'Vendor Name': 'vendorName',
+    'Technician Name': 'technicianName',
     'Status': 'status',
-    'Mileage': 'mileageAtService',
-    // Spare Parts Columns
+    'Mileage at Service': 'mileageAtService',
+    'Route Taken': 'routeTaken',
+    'Next Service Date': 'nextServiceDate',
+    'Created By': 'user.name',
+    // Simplified spare parts columns that actually exist
     'Spare Parts Used': 'spareParts.names',
-    'Spare Part Types': 'spareParts.categories',
-    'Spare Parts Quantity': 'spareParts.totalQuantity',
-    'Spare Parts Unit Price': 'spareParts.averageUnitPrice',
-    'Spare Parts Total Cost': 'spareParts.totalCost',
-    'Parts Destination/Location': 'spareParts.destinations',
-    'Spare Parts Cost Breakdown': 'spareParts.costBreakdown',
-    'Individual Spare Part Costs': 'spareParts.individualCosts',
-    'Spare Parts vs Labor Cost Ratio': 'spareParts.laborRatio',
-    'Total Parts Investment': 'spareParts.totalInvestment',
-    'Spare Parts Details': 'spareParts.fullDetails',
-    'Parts Cost Analysis': 'spareParts.costAnalysis',
-    'Parts Installation Location': 'spareParts.installationLocations'
+    'Total Spare Parts Cost': 'spareParts.totalCost',
+    'Spare Parts Count': 'spareParts.count'
   },
   fuel: {
     'Truck Number (Registration Plate)': 'truck.registration',
@@ -42,7 +34,6 @@ const COLUMN_MAPPINGS = {
     'Attendant': 'attendantName',
     'Route': 'route'
   },
-  // FIXED: Only real compliance fields that exist in your database
   compliance: {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Document Type': 'documentType',
@@ -57,59 +48,31 @@ const COLUMN_MAPPINGS = {
     'Truck Number (Registration Plate)': 'truck.registration',
     'Service Date': 'maintenanceRecord.serviceDate',
     'Spare Part Name': 'name',
-    'Spare Part Category/Type': 'category',
     'Quantity Used': 'quantity',
     'Unit Price': 'unitPrice',
     'Total Cost': 'totalPrice',
-    'Supplier/Vendor': 'supplier',
-    'Destination/Installation Location': 'installationLocation',
-    'Part Number/Code': 'partNumber',
-    'Maintenance Reference': 'maintenanceRecord.description',
-    'Cost per Unit Analysis': 'costAnalysis',
-    'Maintenance Type': 'maintenanceRecord.serviceType'
+    'Installation Location': 'installationLocation',
+    'Part Number': 'partNumber',
+    'Maintenance Reference': 'maintenanceRecord.description'
   }
 }
 
-// Enhanced spare parts data processing
+// Simplified spare parts processing
 function processSparePartsData(spareParts: any[]): any {
   if (!spareParts || spareParts.length === 0) {
     return {
       names: 'No spare parts used',
-      categories: 'N/A',
-      totalQuantity: 0,
-      averageUnitPrice: 0,
       totalCost: 0,
-      destinations: 'N/A',
-      costBreakdown: 'No parts used',
-      individualCosts: 'N/A',
-      laborRatio: 'N/A',
-      totalInvestment: 0,
-      fullDetails: 'No spare parts used in this service',
-      costAnalysis: 'No cost analysis available',
-      installationLocations: 'N/A'
+      count: 0
     }
   }
 
   const totalCost = spareParts.reduce((sum, part) => sum + (part.totalPrice || 0), 0)
-  const totalQuantity = spareParts.reduce((sum, part) => sum + (part.quantity || 0), 0)
-  const averageUnitPrice = totalQuantity > 0 ? totalCost / totalQuantity : 0
 
   return {
     names: spareParts.map(p => p.name).join(', '),
-    categories: [...new Set(spareParts.map(p => p.category || 'General'))].join(', '),
-    totalQuantity,
-    averageUnitPrice: Math.round(averageUnitPrice * 100) / 100,
-    totalCost,
-    destinations: spareParts.map(p => p.installationLocation || 'Workshop').join(', '),
-    costBreakdown: spareParts.map(p => `${p.name}: ${formatKSH(p.totalPrice || 0)}`).join(' | '),
-    individualCosts: spareParts.map(p => `${p.name} (Qty: ${p.quantity}) = ${formatKSH(p.totalPrice || 0)}`).join(' | '),
-    laborRatio: 'Calculated per service record',
-    totalInvestment: totalCost,
-    fullDetails: spareParts.map(p => 
-      `${p.name} - Qty: ${p.quantity}, Unit: ${formatKSH(p.unitPrice || 0)}, Total: ${formatKSH(p.totalPrice || 0)}, Location: ${p.installationLocation || 'Workshop'}`
-    ).join(' | '),
-    costAnalysis: `Total: ${formatKSH(totalCost)}, Avg Unit: ${formatKSH(averageUnitPrice)}, Items: ${spareParts.length}`,
-    installationLocations: [...new Set(spareParts.map(p => p.installationLocation || 'Workshop'))].join(', ')
+    totalCost: Math.round(totalCost * 100) / 100,
+    count: spareParts.length
   }
 }
 
@@ -124,13 +87,6 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
     // Process spare parts data for maintenance records
     if (fieldType === 'maintenance' && record.spareParts) {
       record.spareParts = processSparePartsData(record.spareParts);
-      
-      // Calculate labor ratio
-      const laborCost = record.laborCost || 0;
-      const partsCost = record.spareParts.totalCost || 0;
-      record.spareParts.laborRatio = laborCost > 0 ? 
-        `Parts: ${Math.round((partsCost / (laborCost + partsCost)) * 100)}% | Labor: ${Math.round((laborCost / (laborCost + partsCost)) * 100)}%` : 
-        'No labor cost data';
     }
     
     selectedColumns.forEach(columnName => {
@@ -147,12 +103,40 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
             if (value === undefined || value === null) break;
           }
           
+          // Format specific field types
+          if (columnName.includes('Date') && value && value !== 'N/A') {
+            try {
+              value = new Date(value).toLocaleDateString('en-KE')
+            } catch (e) {
+              // Keep original value if date parsing fails
+            }
+          }
+          
+          if (columnName.includes('Cost') && typeof value === 'number') {
+            value = formatKSH(value)
+          }
+          
           mappedRecord[columnName] = value || 'N/A';
         } else {
-          mappedRecord[columnName] = record[dbField] || 'N/A';
+          let value = record[dbField];
+          
+          // Format specific field types
+          if (columnName.includes('Date') && value && value !== 'N/A') {
+            try {
+              value = new Date(value).toLocaleDateString('en-KE')
+            } catch (e) {
+              // Keep original value if date parsing fails
+            }
+          }
+          
+          if (columnName.includes('Cost') && typeof value === 'number') {
+            value = formatKSH(value)
+          }
+          
+          mappedRecord[columnName] = value || 'N/A';
         }
       } else {
-        mappedRecord[columnName] = record[columnName] || 'N/A';
+        mappedRecord[columnName] = 'N/A';
       }
     });
     
@@ -161,25 +145,61 @@ function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumn
 }
 
 export async function POST(request: NextRequest) {
+  console.log('[DEBUG] === CUSTOM REPORTS API START ===')
+  
   try {
+    // Step 1: Check session
+    console.log('[DEBUG] Step 1: Checking session...')
     const session = await getServerSession(authOptions)
+    
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.log('[DEBUG] FAIL: No session found')
+      return NextResponse.json({ 
+        error: 'Unauthorized', 
+        details: 'No valid session found' 
+      }, { status: 401 })
+    }
+    
+    console.log('[DEBUG] Session valid for user:', session.user.id)
+
+    // Step 2: Parse request body
+    console.log('[DEBUG] Step 2: Parsing request body...')
+    let body
+    try {
+      body = await request.json()
+      console.log('[DEBUG] Request body parsed:', JSON.stringify(body, null, 2))
+    } catch (parseError) {
+      console.error('[DEBUG] FAIL: Error parsing request body:', parseError)
+      return NextResponse.json({ 
+        error: 'Invalid request body', 
+        details: 'Could not parse JSON from request' 
+      }, { status: 400 })
     }
 
-    // Ensure user exists
-    let user = await prisma.user.findUnique({ where: { id: session.user.id } })
-    if (!user) {
-      const existingUserByEmail = await prisma.user.findUnique({ 
-        where: { email: session.user.email || '' } 
-      })
-      
-      if (existingUserByEmail) {
-        user = await prisma.user.update({
-          where: { email: session.user.email || '' },
-          data: { id: session.user.id }
-        })
-      } else {
+    const { truckIds, fields, selectedColumns, dateRange, reportType } = body
+
+    // Step 3: Validate required fields
+    console.log('[DEBUG] Step 3: Validating request...')
+    if (!truckIds || !Array.isArray(truckIds) || truckIds.length === 0) {
+      return NextResponse.json({ 
+        error: 'Invalid truck selection', 
+        details: 'Please select at least one truck' 
+      }, { status: 400 })
+    }
+
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      return NextResponse.json({ 
+        error: 'Invalid field selection', 
+        details: 'Please select at least one data field' 
+      }, { status: 400 })
+    }
+
+    // Step 4: Ensure user exists
+    console.log('[DEBUG] Step 4: Ensuring user exists...')
+    try {
+      let user = await prisma.user.findUnique({ where: { id: session.user.id } })
+      if (!user) {
+        console.log('[DEBUG] Creating user in database...')
         user = await prisma.user.create({
           data: {
             id: session.user.id,
@@ -188,21 +208,17 @@ export async function POST(request: NextRequest) {
           }
         })
       }
+      console.log('[DEBUG] User ready:', user.id)
+    } catch (userError) {
+      console.error('[DEBUG] FAIL: User creation error:', userError)
+      return NextResponse.json({ 
+        error: 'User setup failed', 
+        details: userError instanceof Error ? userError.message : 'Unknown user error' 
+      }, { status: 500 })
     }
 
-    const body = await request.json()
-    const {
-      truckIds,
-      fields,
-      selectedColumns,
-      dateRange,
-      reportType,
-      format = 'json'
-    } = body
-
-    console.log('[DEBUG] Custom report request with real compliance fields:', JSON.stringify(body, null, 2))
-
-    // Build where condition
+    // Step 5: Build where condition
+    console.log('[DEBUG] Step 5: Building database query conditions...')
     const whereCondition: any = {}
     if (truckIds && truckIds.length > 0 && !truckIds.includes('all')) {
       whereCondition.truckId = { in: truckIds }
@@ -212,160 +228,249 @@ export async function POST(request: NextRequest) {
       const dateFilter: any = {}
       if (dateRange.from) dateFilter.gte = new Date(dateRange.from)
       if (dateRange.to) dateFilter.lte = new Date(dateRange.to)
-      whereCondition.createdAt = dateFilter
+      whereCondition.serviceDate = dateFilter
     }
+
+    console.log('[DEBUG] Where condition:', JSON.stringify(whereCondition, null, 2))
 
     const reportData: any = {}
 
-    // Fetch trucks
-    const trucks = await prisma.truck.findMany({
-      where: truckIds?.includes('all') ? {} : { id: { in: truckIds || [] } },
-      include: {
-        _count: {
-          select: {
-            fuelRecords: true,
-            maintenanceRecords: true,
-            complianceDocuments: true,
-            spareParts: true
-          }
-        }
-      }
-    })
-    reportData.trucks = trucks
+    // Step 6: Fetch trucks
+    console.log('[DEBUG] Step 6: Fetching trucks...')
+    try {
+      const trucks = await prisma.truck.findMany({
+        where: truckIds?.includes('all') ? {} : { id: { in: truckIds || [] } },
+        select: { id: true, registration: true, make: true, model: true }
+      })
+      
+      console.log('[DEBUG] Found trucks:', trucks.length)
+      reportData.trucks = trucks
 
-    // Fetch maintenance with comprehensive spare parts data
+      if (trucks.length === 0) {
+        return NextResponse.json({ 
+          error: 'No trucks found', 
+          details: 'No trucks match the selected criteria' 
+        }, { status: 404 })
+      }
+    } catch (truckError) {
+      console.error('[DEBUG] FAIL: Error fetching trucks:', truckError)
+      return NextResponse.json({ 
+        error: 'Database error fetching trucks', 
+        details: truckError instanceof Error ? truckError.message : 'Unknown truck fetch error' 
+      }, { status: 500 })
+    }
+
+    // Step 7: Fetch maintenance records if requested
     if (fields?.includes('maintenance')) {
-      const maintenanceRecords = await prisma.maintenanceRecord.findMany({
-        where: whereCondition,
-        include: {
-          truck: {
-            select: { registration: true, make: true, model: true }
-          },
-          spareParts: {
-            select: {
-              name: true,
-              category: true,
-              quantity: true,
-              unitPrice: true,
-              totalPrice: true,
-              supplier: true,
-              installationLocation: true,
-              partNumber: true,
-              createdAt: true
+      console.log('[DEBUG] Step 7: Fetching maintenance records...')
+      try {
+        const maintenanceRecords = await prisma.maintenanceRecord.findMany({
+          where: whereCondition,
+          include: {
+            truck: {
+              select: { id: true, registration: true, make: true, model: true }
+            },
+            spareParts: {
+              select: {
+                id: true,
+                name: true,
+                quantity: true,
+                unitPrice: true,
+                totalPrice: true,
+                installationLocation: true,
+                partNumber: true
+              }
+            },
+            user: {
+              select: { id: true, name: true }
             }
           },
-          user: {
-            select: { name: true }
-          }
-        },
-        orderBy: { serviceDate: 'desc' }
-      })
-      reportData.maintenanceRecords = maintenanceRecords
+          orderBy: { serviceDate: 'desc' },
+          take: 100
+        })
+
+        console.log('[DEBUG] Maintenance records fetched:', maintenanceRecords.length)
+        reportData.maintenanceRecords = maintenanceRecords
+
+        if (maintenanceRecords.length > 0) {
+          console.log('[DEBUG] Sample maintenance record:', {
+            id: maintenanceRecords[0].id,
+            serviceType: maintenanceRecords[0].serviceType,
+            truck: maintenanceRecords[0].truck?.registration,
+            spareParts: maintenanceRecords[0].spareParts?.length
+          })
+        }
+      } catch (maintenanceError) {
+        console.error('[DEBUG] FAIL: Error fetching maintenance records:', maintenanceError)
+        return NextResponse.json({ 
+          error: 'Database error fetching maintenance records', 
+          details: maintenanceError instanceof Error ? maintenanceError.message : 'Unknown maintenance fetch error' 
+        }, { status: 500 })
+      }
     }
 
     // Fetch dedicated spare parts data
     if (fields?.includes('spares')) {
-      const sparePartsRecords = await prisma.sparePart.findMany({
-        where: {
-          maintenanceRecord: whereCondition
-        },
-        include: {
-          maintenanceRecord: {
-            select: {
-              serviceDate: true,
-              serviceType: true,
-              description: true,
-              truck: {
-                select: { registration: true, make: true, model: true }
+      console.log('[DEBUG] Fetching spare parts records...')
+      try {
+        const sparePartsRecords = await prisma.sparePart.findMany({
+          include: {
+            maintenanceRecord: {
+              select: {
+                serviceDate: true,
+                serviceType: true,
+                description: true,
+                truck: {
+                  select: { registration: true, make: true, model: true }
+                }
               }
             }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      })
-      
-      // Flatten the data for easier reporting
-      const flattenedSpares = sparePartsRecords.map(spare => ({
-        ...spare,
-        truck: spare.maintenanceRecord?.truck,
-        serviceDate: spare.maintenanceRecord?.serviceDate,
-        serviceType: spare.maintenanceRecord?.serviceType,
-        costAnalysis: `Unit: ${formatKSH(spare.unitPrice || 0)} × ${spare.quantity} = ${formatKSH(spare.totalPrice || 0)}`
-      }))
-      
-      reportData.spareParts = flattenedSpares
+          },
+          orderBy: { createdAt: 'desc' }
+        })
+        
+        const flattenedSpares = sparePartsRecords.map(spare => ({
+          ...spare,
+          truck: spare.maintenanceRecord?.truck,
+          serviceDate: spare.maintenanceRecord?.serviceDate,
+          serviceType: spare.maintenanceRecord?.serviceType
+        }))
+        
+        reportData.spareParts = flattenedSpares
+        console.log('[DEBUG] Spare parts records processed:', flattenedSpares.length)
+      } catch (sparePartsError) {
+        console.error('[DEBUG] FAIL: Error fetching spare parts:', sparePartsError)
+        return NextResponse.json({ 
+          error: 'Database error fetching spare parts', 
+          details: sparePartsError instanceof Error ? sparePartsError.message : 'Unknown spare parts fetch error' 
+        }, { status: 500 })
+      }
     }
 
     // Fetch fuel records
     if (fields?.includes('fuel')) {
-      const fuelRecords = await prisma.fuelRecord.findMany({
-        where: whereCondition,
-        include: {
-          truck: {
-            select: { registration: true, make: true, model: true }
-          }
-        },
-        orderBy: { date: 'desc' }
-      })
-      reportData.fuelRecords = fuelRecords
-    }
-
-    // FIXED: Fetch compliance with ONLY real database fields - no fake processing
-    if (fields?.includes('compliance')) {
-      const complianceDocuments = await prisma.complianceDocument.findMany({
-        where: whereCondition,
-        include: {
-          truck: {
-            select: { registration: true, make: true, model: true }
+      console.log('[DEBUG] Fetching fuel records...')
+      try {
+        const fuelRecords = await prisma.fuelRecord.findMany({
+          where: whereCondition,
+          include: {
+            truck: {
+              select: { registration: true, make: true, model: true }
+            }
           },
-          user: {
-            select: { name: true }
-          }
-        },
-        orderBy: { expiryDate: 'asc' }
-      })
-      reportData.complianceDocuments = complianceDocuments
+          orderBy: { date: 'desc' }
+        })
+        reportData.fuelRecords = fuelRecords
+        console.log('[DEBUG] Fuel records fetched:', fuelRecords.length)
+      } catch (fuelError) {
+        console.error('[DEBUG] FAIL: Error fetching fuel records:', fuelError)
+        return NextResponse.json({ 
+          error: 'Database error fetching fuel records', 
+          details: fuelError instanceof Error ? fuelError.message : 'Unknown fuel fetch error' 
+        }, { status: 500 })
+      }
     }
 
-    // Enhanced analytics with spare parts focus
-    const analytics = calculateAnalyticsWithSpares(reportData)
+    // Fetch compliance documents
+    if (fields?.includes('compliance')) {
+      console.log('[DEBUG] Fetching compliance documents...')
+      try {
+        const complianceDocuments = await prisma.complianceDocument.findMany({
+          where: whereCondition,
+          include: {
+            truck: {
+              select: { registration: true, make: true, model: true }
+            },
+            user: {
+              select: { name: true }
+            }
+          },
+          orderBy: { expiryDate: 'asc' }
+        })
+        reportData.complianceDocuments = complianceDocuments
+        console.log('[DEBUG] Compliance documents fetched:', complianceDocuments.length)
+      } catch (complianceError) {
+        console.error('[DEBUG] FAIL: Error fetching compliance documents:', complianceError)
+        return NextResponse.json({ 
+          error: 'Database error fetching compliance documents', 
+          details: complianceError instanceof Error ? complianceError.message : 'Unknown compliance fetch error' 
+        }, { status: 500 })
+      }
+    }
 
-    // Map data to selected columns
+    // Step 8: Process and map data
+    console.log('[DEBUG] Step 8: Processing and mapping data...')
     const mappedData: any = {}
-    
-    Object.keys(selectedColumns || {}).forEach(fieldType => {
-      let rawData = [];
-      
-      if (fieldType === 'spares') {
-        rawData = reportData.spareParts || []
-      } else if (fieldType === 'compliance') {
-        rawData = reportData.complianceDocuments || []
-      } else {
-        rawData = reportData[`${fieldType}Records`] || reportData[fieldType] || []
-      }
-      
-      const columns = selectedColumns[fieldType] || []
-      
-      if (rawData.length > 0 && columns.length > 0) {
-        mappedData[fieldType] = mapDataToSelectedColumns(rawData, fieldType, columns)
-      }
-    })
 
+    try {
+      Object.keys(selectedColumns || {}).forEach(fieldType => {
+        let rawData = []
+        
+        if (fieldType === 'maintenance') {
+          rawData = reportData.maintenanceRecords || []
+        } else if (fieldType === 'compliance') {
+          rawData = reportData.complianceDocuments || []
+        } else if (fieldType === 'spares') {
+          rawData = reportData.spareParts || []
+        } else {
+          rawData = reportData[`${fieldType}Records`] || []
+        }
+        
+        const columns = selectedColumns[fieldType] || []
+        
+        console.log(`[DEBUG] Processing ${fieldType}: ${rawData.length} records, ${columns.length} columns`)
+        
+        if (rawData.length > 0 && columns.length > 0) {
+          mappedData[fieldType] = mapDataToSelectedColumns(rawData, fieldType, columns)
+          console.log(`[DEBUG] Mapped ${fieldType} data:`, mappedData[fieldType]?.length, 'records')
+        }
+      })
+    } catch (mappingError) {
+      console.error('[DEBUG] FAIL: Error mapping data:', mappingError)
+      return NextResponse.json({ 
+        error: 'Error processing report data', 
+        details: mappingError instanceof Error ? mappingError.message : 'Unknown mapping error' 
+      }, { status: 500 })
+    }
+
+    // Step 9: Build final report
+    console.log('[DEBUG] Step 9: Building final report...')
     const finalReport = {
       metadata: {
         generatedAt: new Date().toISOString(),
         generatedBy: session.user.name || session.user.email,
         reportType,
         dateRange,
-        trucksIncluded: trucks.length,
+        trucksIncluded: reportData.trucks?.length || 0,
         fields: Object.keys(selectedColumns || {}),
-        selectedColumns,
-        sparePartsFocus: fields?.includes('spares') || false
+        selectedColumns
       },
       trucks: reportData.trucks,
       data: mappedData,
-      analytics
+      analytics: {
+        maintenance: {
+          recordsCount: reportData.maintenanceRecords?.length || 0
+        },
+        compliance: {
+          recordsCount: reportData.complianceDocuments?.length || 0
+        },
+        fuel: {
+          recordsCount: reportData.fuelRecords?.length || 0
+        },
+        spares: {
+          recordsCount: reportData.spareParts?.length || 0
+        }
+      }
     }
+
+    console.log('[DEBUG] Final report structure:', {
+      dataKeys: Object.keys(finalReport.data),
+      maintenanceRecords: finalReport.data.maintenance?.length || 0,
+      complianceRecords: finalReport.data.compliance?.length || 0,
+      fuelRecords: finalReport.data.fuel?.length || 0,
+      spareRecords: finalReport.data.spares?.length || 0
+    })
+    console.log('[DEBUG] === CUSTOM REPORTS API SUCCESS ===')
 
     return NextResponse.json({ 
       success: true, 
@@ -373,125 +478,19 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[DEBUG] Error generating custom report:', error)
-    return NextResponse.json(
-      { error: 'Failed to generate report. Please try again.' },
-      { status: 500 }
-    )
-  }
-}
-
-// Enhanced analytics with spare parts focus
-function calculateAnalyticsWithSpares(data: any) {
-  const analytics: any = {}
-
-  // Fuel analytics
-  if (data.fuelRecords?.length > 0) {
-    const fuelRecords = data.fuelRecords
-    const totalLiters = fuelRecords.reduce((sum: number, r: any) => sum + (r.liters || 0), 0)
-    const totalCost = fuelRecords.reduce((sum: number, r: any) => sum + (r.totalCost || 0), 0)
-
-    analytics.fuel = {
-      totalLiters: Math.round(totalLiters * 100) / 100,
-      totalCost: Math.round(totalCost * 100) / 100,
-      recordsCount: fuelRecords.length
-    }
-  }
-
-  // Maintenance analytics with spare parts breakdown
-  if (data.maintenanceRecords?.length > 0) {
-    const maintenanceRecords = data.maintenanceRecords
-    const totalLaborCost = maintenanceRecords.reduce((sum: number, r: any) => sum + (r.laborCost || 0), 0)
-    const totalPartsCost = maintenanceRecords.reduce((sum: number, r: any) => {
-      return sum + (r.spareParts || []).reduce((pSum: number, part: any) => pSum + (part.totalPrice || 0), 0)
-    }, 0)
-
-    // Detailed spare parts analytics
-    const allSpareParts = maintenanceRecords.flatMap((r: any) => r.spareParts || [])
-    const sparePartsAnalytics = {
-      totalPartsUsed: allSpareParts.length,
-      totalPartsQuantity: allSpareParts.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0),
-      averagePartCost: allSpareParts.length > 0 ? totalPartsCost / allSpareParts.length : 0,
-      mostExpensivePart: allSpareParts.reduce((max: any, part: any) => 
-        (part.totalPrice || 0) > (max.totalPrice || 0) ? part : max, {}),
-      partCategories: [...new Set(allSpareParts.map((p: any) => p.category).filter(Boolean))],
-      topSuppliers: [...new Set(allSpareParts.map((p: any) => p.supplier).filter(Boolean))]
-    }
-
-    analytics.maintenance = {
-      totalLaborCost: Math.round(totalLaborCost * 100) / 100,
-      totalPartsCost: Math.round(totalPartsCost * 100) / 100,
-      totalMaintenanceCost: Math.round((totalLaborCost + totalPartsCost) * 100) / 100,
-      laborToPartsRatio: totalPartsCost > 0 ? Math.round((totalLaborCost / totalPartsCost) * 100) / 100 : 'No parts data',
-      recordsCount: maintenanceRecords.length,
-      spareParts: sparePartsAnalytics
-    }
-  }
-
-  // Dedicated spare parts analytics
-  if (data.spareParts?.length > 0) {
-    const spareParts = data.spareParts
-    const totalSparesCost = spareParts.reduce((sum: number, p: any) => sum + (p.totalPrice || 0), 0)
-    const totalQuantity = spareParts.reduce((sum: number, p: any) => sum + (p.quantity || 0), 0)
-
-    analytics.spareParts = {
-      totalCost: Math.round(totalSparesCost * 100) / 100,
-      totalQuantity,
-      averageCostPerPart: spareParts.length > 0 ? Math.round((totalSparesCost / spareParts.length) * 100) / 100 : 0,
-      uniquePartTypes: [...new Set(spareParts.map((p: any) => p.category).filter(Boolean))].length,
-      topPartsByValue: spareParts
-        .sort((a: any, b: any) => (b.totalPrice || 0) - (a.totalPrice || 0))
-        .slice(0, 5)
-        .map((p: any) => ({ name: p.name, cost: p.totalPrice })),
-      installationLocations: [...new Set(spareParts.map((p: any) => p.installationLocation).filter(Boolean))]
-    }
-  }
-
-  // FIXED: Simple compliance analytics with real data only
-  if (data.complianceDocuments?.length > 0) {
-    const complianceDocuments = data.complianceDocuments
-    const now = new Date()
+    console.error('[DEBUG] === CUSTOM REPORTS API FATAL ERROR ===')
+    console.error('[DEBUG] Fatal error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    })
     
-    const expiringCount = complianceDocuments.filter((d: any) => {
-      const daysToExpiry = Math.ceil((new Date(d.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return daysToExpiry <= 30 && daysToExpiry > 0
-    }).length
-
-    const expiredCount = complianceDocuments.filter((d: any) => {
-      const daysToExpiry = Math.ceil((new Date(d.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return daysToExpiry < 0
-    }).length
-    
-    analytics.compliance = {
-      totalCost: Math.round(complianceDocuments.reduce((sum: number, d: any) => sum + (d.cost || 0), 0) * 100) / 100,
-      validCount: complianceDocuments.filter((d: any) => d.status === 'VALID').length,
-      expiringCount,
-      expiredCount,
-      documentsCount: complianceDocuments.length,
-      documentTypes: [...new Set(complianceDocuments.map((d: any) => d.documentType))],
-      averageRenewalCost: complianceDocuments.length > 0 ? 
-        Math.round((complianceDocuments.reduce((sum: number, d: any) => sum + (d.cost || 0), 0) / complianceDocuments.length) * 100) / 100 : 0
-    }
+    return NextResponse.json({
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown server error occurred',
+      timestamp: new Date().toISOString()
+    }, { status: 500 })
   }
-
-  // Overall analytics with spare parts emphasis
-  const totalOperationalCost = (analytics.fuel?.totalCost || 0) + 
-                               (analytics.maintenance?.totalMaintenanceCost || 0) + 
-                               (analytics.compliance?.totalCost || 0)
-
-  analytics.overall = {
-    totalOperationalCost: Math.round(totalOperationalCost * 100) / 100,
-    costBreakdown: {
-      fuel: analytics.fuel?.totalCost || 0,
-      labor: analytics.maintenance?.totalLaborCost || 0,
-      spareParts: analytics.maintenance?.totalPartsCost || 0,
-      compliance: analytics.compliance?.totalCost || 0
-    },
-    sparePartsPercentage: totalOperationalCost > 0 ? 
-      Math.round(((analytics.maintenance?.totalPartsCost || 0) / totalOperationalCost) * 100) : 0
-  }
-
-  return analytics
 }
 
 // Helper function for formatting
