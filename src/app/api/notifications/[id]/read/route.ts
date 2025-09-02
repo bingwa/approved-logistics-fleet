@@ -1,9 +1,8 @@
-// src/app/api/notifications/[id]/read/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
-export async function PUT(
+export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -15,20 +14,20 @@ export async function PUT(
 
     const notificationId = params.id
 
-    // Store read status in localStorage-like system or session
-    // Since we're generating dynamic notifications, we'll use a simple approach
-    // In a production system, you'd store this in the database
-
+    // In a real app, you'd update the notification in your database
+    // For now, we'll just return success
+    console.log(`Marking notification ${notificationId} as read for user ${session.user.id}`)
+    
     return NextResponse.json({
       success: true,
-      message: `Notification ${notificationId} marked as read`
+      message: 'Notification marked as read'
     })
 
   } catch (error) {
     console.error('Error marking notification as read:', error)
-    return NextResponse.json(
-      { error: 'Failed to mark notification as read' },
-      { status: 500 }
-    )
+    return NextResponse.json({
+      success: false,
+      error: 'Failed to mark notification as read'
+    }, { status: 500 })
   }
 }

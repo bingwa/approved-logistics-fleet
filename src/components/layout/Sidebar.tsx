@@ -14,14 +14,12 @@ import {
   ChevronLeft, 
   Building2, 
   User, 
-  ChevronRight,
-  // Removed Bell import - no longer needed
-  Loader2
+  ChevronRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { subscribeToNotifications } from '../notifications/NotificationDropdown'
 
 interface SidebarProps {
   collapsed: boolean
@@ -63,17 +61,25 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
   useEffect(() => {
     fetchNotifications()
     
+    // Subscribe to global notification updates from NotificationDropdown
+    const unsubscribe = subscribeToNotifications((updatedNotifications) => {
+      setNotifications(updatedNotifications)
+    })
+    
     // Poll every 30 seconds for real-time updates
     const interval = setInterval(fetchNotifications, 30000)
     
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      unsubscribe()
+    }
   }, [])
 
-  // Calculate badge counts from notifications
-  const unreadCount = notifications.filter(n => !n.isRead).length
-  const maintenanceNotifications = notifications.filter(n => n.type === 'MAINTENANCE' && !n.isRead).length
-  const complianceNotifications = notifications.filter(n => n.type === 'COMPLIANCE' && !n.isRead).length
-  const fuelNotifications = notifications.filter(n => n.type === 'FUEL' && !n.isRead).length
+  // FIXED: Calculate badge counts from notifications (only unread)
+  const unreadNotifications = notifications.filter(n => !n.isRead)
+  const maintenanceNotifications = unreadNotifications.filter(n => n.type === 'MAINTENANCE').length
+  const complianceNotifications = unreadNotifications.filter(n => n.type === 'COMPLIANCE').length
+  const fuelNotifications = unreadNotifications.filter(n => n.type === 'FUEL').length
 
   const navigation = [
     { 
@@ -126,7 +132,7 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
         isMobile && 'fixed inset-y-0 left-0 z-50 shadow-lg'
       )}
     >
-      {/* Header - REMOVED notification bell icon */}
+      {/* Header */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between">
           {!collapsed && (
@@ -141,6 +147,7 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Fleet Manager</h2>
+                <p className="text-xs text-muted-foreground">Fleet Management System</p>
               </div>
             </motion.div>
           )}
@@ -151,7 +158,6 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
             </div>
           )}
 
-          {/* Only toggle button - removed notification bell */}
           <Button
             variant="ghost"
             size="sm"
@@ -205,8 +211,8 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
                   </motion.span>
                 )}
 
-                {/* Badge for expanded state */}
-                {!collapsed && item.badge && item.badge > 0 && (
+                {/* FIXED: Badge for expanded state - ONLY show if count > 0 */}
+                {!collapsed && item.badge !== undefined && item.badge > 0 && (
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
@@ -221,18 +227,18 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
                   </motion.div>
                 )}
 
-                {/* Dot indicator for collapsed state */}
-                {collapsed && item.badge && item.badge > 0 && (
+                {/* FIXED: Dot indicator for collapsed state - ONLY show if count > 0 */}
+                {collapsed && item.badge !== undefined && item.badge > 0 && (
                   <div className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full animate-pulse"></div>
                 )}
 
-                {/* Tooltip for collapsed state */}
+                {/* FIXED: Tooltip for collapsed state - ONLY show badge if count > 0 */}
                 {collapsed && (
                   <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-xs rounded-md shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
                     {item.name}
-                    {item.badge && item.badge > 0 && (
+                    {item.badge !== undefined && item.badge > 0 && (
                       <span className="ml-2 px-1.5 py-0.5 bg-red-500 text-white rounded-full text-xs">
-                        {item.badge}
+                        {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     )}
                   </div>
@@ -243,7 +249,7 @@ export function Sidebar({ collapsed, onToggle, isMobile = false }: SidebarProps)
         })}
       </nav>
 
-      {/* Footer - simplified, removed notification bell */}
+      {/* Footer */}
       <div className="p-4 border-t border-border">
         {!collapsed ? (
           <motion.div

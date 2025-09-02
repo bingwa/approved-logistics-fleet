@@ -13,12 +13,31 @@ import { toast } from 'sonner'
 
 interface Notification {
   id: string
-  type: string
-  priority: string
+  type: 'MAINTENANCE' | 'COMPLIANCE' | 'FUEL' | 'SYSTEM'
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
   title: string
   message: string
   isRead: boolean
   createdAt: string
+}
+
+// Create a global notification store for cross-component updates
+let globalNotifications: Notification[] = []
+const notificationListeners: ((notifications: Notification[]) => void)[] = []
+
+const updateGlobalNotifications = (notifications: Notification[]) => {
+  globalNotifications = notifications
+  notificationListeners.forEach(listener => listener(notifications))
+}
+
+const subscribeToNotifications = (callback: (notifications: Notification[]) => void) => {
+  notificationListeners.push(callback)
+  return () => {
+    const index = notificationListeners.indexOf(callback)
+    if (index > -1) {
+      notificationListeners.splice(index, 1)
+    }
+  }
 }
 
 export function NotificationDropdown() {
@@ -34,7 +53,9 @@ export function NotificationDropdown() {
       })
       if (response.ok) {
         const data = await response.json()
-        setNotifications(data.notifications || [])
+        const fetchedNotifications = data.notifications || []
+        setNotifications(fetchedNotifications)
+        updateGlobalNotifications(fetchedNotifications)
       }
     } catch (error) {
       console.error('Error fetching notifications:', error)
@@ -56,12 +77,14 @@ export function NotificationDropdown() {
 
       if (response.ok) {
         // Immediately update all notifications to read
-        setNotifications(prev => 
-          prev.map(notification => ({ 
-            ...notification, 
-            isRead: true 
-          }))
-        )
+        const updatedNotifications = notifications.map(notification => ({ 
+          ...notification, 
+          isRead: true 
+        }))
+        
+        setNotifications(updatedNotifications)
+        updateGlobalNotifications(updatedNotifications)
+        
         toast.success('All notifications marked as read')
       } else {
         toast.error('Failed to mark notifications as read')
@@ -74,10 +97,44 @@ export function NotificationDropdown() {
     }
   }
 
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'POST'
+      })
+
+      if (response.ok) {
+        // Mark specific notification as read in local state
+        const updatedNotifications = notifications.map(notification => 
+          notification.id === notificationId 
+            ? { ...notification, isRead: true }
+            : notification
+        )
+        
+        setNotifications(updatedNotifications)
+        updateGlobalNotifications(updatedNotifications)
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
+
   useEffect(() => {
     fetchNotifications()
+    
+    // Poll every 30 seconds for real-time updates
     const interval = setInterval(fetchNotifications, 30000)
+    
     return () => clearInterval(interval)
+  }, [])
+
+  // Subscribe to global notification updates
+  useEffect(() => {
+    const unsubscribe = subscribeToNotifications((updatedNotifications) => {
+      setNotifications(updatedNotifications)
+    })
+    
+    return unsubscribe
   }, [])
 
   const unreadCount = notifications.filter(n => !n.isRead).length
@@ -97,6 +154,7 @@ export function NotificationDropdown() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
+          {/* FIXED: Only show badge if unreadCount > 0 */}
           {unreadCount > 0 && (
             <Badge 
               variant="destructive" 
@@ -113,28 +171,32 @@ export function NotificationDropdown() {
         <div className="flex items-center justify-between p-3 border-b">
           <div className="flex items-center space-x-2">
             <h3 className="font-semibold text-sm">Notifications</h3>
+            {/* FIXED: Only show badge if unreadCount > 0 */}
             {unreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">
                 {unreadCount} new
               </Badge>
             )}
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={markAllAsRead}
-            disabled={isMarkingRead || unreadCount === 0}
-            className="h-7 text-xs"
-          >
-            {isMarkingRead ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Check className="h-3 w-3" />
-            )}
-            <span className="ml-1">
-              {isMarkingRead ? 'Marking...' : 'Mark all read'}
-            </span>
-          </Button>
+          {/* FIXED: Only show button if there are unread notifications */}
+          {unreadCount > 0 && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={markAllAsRead}
+              disabled={isMarkingRead}
+              className="h-7 text-xs"
+            >
+              {isMarkingRead ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
+              <span className="ml-1">
+                {isMarkingRead ? 'Marking...' : 'Mark all read'}
+              </span>
+            </Button>
+          )}
         </div>
 
         {/* Notifications List */}
@@ -148,9 +210,10 @@ export function NotificationDropdown() {
             recentNotifications.map((notification) => (
               <div 
                 key={notification.id}
-                className={`p-3 border-b last:border-0 hover:bg-muted/50 ${
+                className={`p-3 border-b last:border-0 hover:bg-muted/50 cursor-pointer ${
                   !notification.isRead ? 'bg-blue-50/30 border-l-2 border-l-blue-500' : ''
                 }`}
+                onClick={() => !notification.isRead && markAsRead(notification.id)}
               >
                 <div className="flex items-start space-x-3">
                   <div className="flex-1 min-w-0">
@@ -198,3 +261,6 @@ export function NotificationDropdown() {
     </DropdownMenu>
   )
 }
+
+// Export the notification store functions for use in other components
+export { subscribeToNotifications, updateGlobalNotifications }
