@@ -67,11 +67,12 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.0.14",
+    "@tailwindcss/postcss": "^4.1.12",
+    "tailwindcss": "^4.1.12",
     "zustand": "^5.0.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.1.12",
     "@tanstack/react-query-devtools": "^5.84.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/multer": "^2.0.0",
@@ -82,7 +83,6 @@
     "eslint": "^9",
     "eslint-config-next": "15.4.5",
     "prisma": "^6.13.0",
-    "tailwindcss": "^4.1.12",
     "tsx": "^4.20.3",
     "tw-animate-css": "^1.3.6",
     "typescript": "^5"
