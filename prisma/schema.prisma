@@ -95,23 +95,23 @@ model SparePart {
 }
 
 model ComplianceDocument {
-  id                String    @id @default(cuid())
-  truckId           String
-  documentType      String
-  certificateNumber String?
-  issueDate         DateTime
-  expiryDate        DateTime?
-  status            String    @default("VALID")
-  cost              Float     @default(0)
-  issuingAuthority  String?
-  documentUrl       String?
-  userId            String
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                String   @id @default(cuid())
+  truckId          String
+  userId           String
+  documentType     String
+  certificateNumber String
+  issueDate        DateTime
+  expiryDate       DateTime?  // FIXED: Made optional with ?
+  status           String     @default("VALID")
+  cost             Float      @default(0)
+  issuingAuthority String?
+  documentUrl      String?
+  daysToExpiry     Int        @default(0)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
-  // Relations
-  truck             Truck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
-  user              User      @relation(fields: [userId], references: [id])
+  truck            Truck      @relation(fields: [truckId], references: [id])
+  user             User       @relation(fields: [userId], references: [id])
 
   @@map("compliance_documents")
 }

@@ -1,28 +1,32 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Plus, Search, Filter, AlertTriangle, CheckCircle, Clock, XCircle } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AddComplianceDocumentForm } from '@/components/forms/AddComplianceDocumentForm'
-import { format } from 'date-fns'
+import { Plus, Search, Filter, FileText, Calendar, AlertTriangle, CheckCircle, Clock, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { format } from 'date-fns'
+
+// FIXED: Correct default import (no curly braces)
+import AddComplianceDocumentForm from '@/components/forms/AddComplianceDocumentForm'
 
 interface ComplianceDocument {
   id: string
-  truckId: string
   documentType: string
   certificateNumber: string
   issueDate: string
-  expiryDate: string
+  expiryDate?: string
+  status: 'VALID' | 'EXPIRED' | 'EXPIRING_SOON'
+  cost: number
   issuingAuthority: string
-  status: string
-  documentUrl?: string
   daysToExpiry: number
   truck: {
+    id: string
     registration: string
     make: string
     model: string
@@ -30,208 +34,167 @@ interface ComplianceDocument {
   user: {
     name: string
   }
+  createdAt: string
+  documentUrl?: string
+}
+
+const documentTypeLabels: Record<string, string> = {
+  'TGL_LICENSE': 'Transit Goods License',
+  'VEHICLE_REGISTRATION': 'Vehicle Registration',
+  'INSURANCE': 'Insurance Certificate',
+  'INSPECTION': 'Vehicle Inspection',
+  'PERMIT': 'Transport Permit',
+  'PSV_LICENSE': 'PSV License',
+  'OTHER': 'Other Document'
+}
+
+const statusColors: Record<string, string> = {
+  'VALID': 'bg-green-100 text-green-800',
+  'EXPIRED': 'bg-red-100 text-red-800',
+  'EXPIRING_SOON': 'bg-yellow-100 text-yellow-800'
 }
 
 export default function CompliancePage() {
+  const router = useRouter()
   const [documents, setDocuments] = useState<ComplianceDocument[]>([])
-  const [filteredDocuments, setFilteredDocuments] = useState<ComplianceDocument[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [showForm, setShowForm] = useState(false)
 
-  useEffect(() => {
-    fetchComplianceDocuments()
-  }, [])
-
-  // Filter documents whenever search term, status filter, or documents change
-  useEffect(() => {
-    let filtered = documents
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(doc =>
-        doc.truck.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        doc.certificateNumber.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-
-    // Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(doc => {
-        const status = doc.status.toLowerCase()
-        switch (statusFilter) {
-          case 'valid':
-            return status === 'valid'
-          case 'expiring':
-            return status === 'expiring'
-          case 'expired':
-            return status === 'expired'
-          default:
-            return true
-        }
-      })
-    }
-
-    // Type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(doc => {
-        const docType = doc.documentType.toLowerCase()
-        switch (typeFilter) {
-          case 'insurance':
-            return docType === 'insurance'
-          case 'ntsa':
-            return docType === 'ntsa_inspection' || docType === 'ntsa inspection'
-          case 'license':
-            return docType.includes('license')
-          default:
-            return true
-        }
-      })
-    }
-
-    console.log('[DEBUG] Filtering results:')
-    console.log('Total documents:', documents.length)
-    console.log('Search term:', searchTerm)
-    console.log('Status filter:', statusFilter)
-    console.log('Type filter:', typeFilter)
-    console.log('Filtered results:', filtered.length)
-
-    setFilteredDocuments(filtered)
-  }, [documents, searchTerm, statusFilter, typeFilter])
-
-  const fetchComplianceDocuments = async () => {
+  // Fetch compliance documents
+  const fetchDocuments = async () => {
     try {
       setIsLoading(true)
       const response = await fetch('/api/compliance')
-      if (response.ok) {
-        const data = await response.json()
-        
-        // DEBUG: Log received data
-        console.log('[DEBUG] Compliance page received data:', data)
-        console.log('[DEBUG] Number of documents:', data.complianceDocuments?.length)
-        console.log('[DEBUG] Documents:', data.complianceDocuments)
-        
-        setDocuments(data.complianceDocuments || [])
-        console.log(`Fetched ${data.complianceDocuments?.length || 0} compliance documents`)
-      } else {
-        toast.error('Failed to fetch compliance documents')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch compliance documents')
       }
+
+      const data = await response.json()
+      setDocuments(data.data || [])
     } catch (error) {
-      console.error('Error fetching compliance documents:', error)
-      toast.error('Failed to fetch compliance documents')
+      console.error('Error fetching documents:', error)
+      toast.error('Failed to load compliance documents')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleAddSuccess = () => {
-    fetchComplianceDocuments()
-    setShowAddForm(false)
-    toast.success('Compliance document added successfully!')
-  }
+  useEffect(() => {
+    fetchDocuments()
+  }, [])
 
-  const getStatusBadge = (status: string, daysToExpiry: number) => {
-    const statusLower = status.toLowerCase()
+  // Filter documents based on search and filters
+  const filteredDocuments = documents.filter(doc => {
+    const matchesSearch = doc.certificateNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         doc.truck.registration.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         doc.issuingAuthority.toLowerCase().includes(searchTerm.toLowerCase())
     
-    switch (statusLower) {
-      case 'valid':
-        return <Badge variant="success" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Valid</Badge>
-      case 'expiring':
-        return <Badge variant="warning" className="bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />Expiring ({daysToExpiry} days)</Badge>
-      case 'expired':
-        return <Badge variant="destructive" className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Expired</Badge>
-      default:
-        return <Badge variant="secondary">{status}</Badge>
-    }
+    const matchesStatus = statusFilter === 'all' || doc.status === statusFilter
+    const matchesType = typeFilter === 'all' || doc.documentType === typeFilter
+
+    return matchesSearch && matchesStatus && matchesType
+  })
+
+  // Get status summary
+  const statusSummary = {
+    total: documents.length,
+    valid: documents.filter(d => d.status === 'VALID').length,
+    expiring: documents.filter(d => d.status === 'EXPIRING_SOON').length,
+    expired: documents.filter(d => d.status === 'EXPIRED').length
   }
 
-  const getDocumentTypeDisplay = (docType: string) => {
-    switch (docType.toUpperCase()) {
-      case 'NTSA_INSPECTION':
-        return 'NTSA Inspection'
-      case 'INSURANCE':
-        return 'Insurance Certificate'
-      case 'TGL_LICENSE':
-        return 'TGL License'
-      case 'COMMERCIAL_LICENSE':
-        return 'Commercial License'
-      default:
-        return docType
-    }
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-KE', {
+      style: 'currency',
+      currency: 'KES',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
 
-  // Calculate statistics
-  const validDocs = documents.filter(doc => doc.status.toLowerCase() === 'valid')
-  const expiringDocs = documents.filter(doc => doc.status.toLowerCase() === 'expiring')
-  const expiredDocs = documents.filter(doc => doc.status.toLowerCase() === 'expired')
-
-  if (showAddForm) {
+  // FIXED: Simple conditional rendering without complex components
+  if (showForm) {
     return (
       <div className="container mx-auto p-6">
-        <AddComplianceDocumentForm
-          onSuccess={handleAddSuccess}
-          onCancel={() => setShowAddForm(false)}
-        />
+        <div className="mb-6">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowForm(false)}
+            className="mb-4"
+          >
+            ← Back to Compliance
+          </Button>
+        </div>
+        {/* This should work now */}
+        <AddComplianceDocumentForm />
       </div>
     )
   }
 
   return (
     <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Compliance Management</h1>
-          <p className="text-muted-foreground">
-            Track and manage vehicle compliance documents and certifications
-          </p>
+          <h1 className="text-3xl font-bold text-gray-900">Compliance Management</h1>
+          <p className="text-gray-600 mt-2">Manage vehicle compliance documents and certificates</p>
         </div>
-        <Button onClick={() => setShowAddForm(true)}>
-          <Plus className="w-4 h-4 mr-2" />
+        <Button onClick={() => setShowForm(true)} className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="mr-2 h-4 w-4" />
           Add Document
         </Button>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
+      {/* Status Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Currently valid</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{validDocs.length}</div>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <FileText className="h-8 w-8 text-blue-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Total Documents</p>
+                <p className="text-2xl font-bold text-gray-900">{statusSummary.total}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Need renewal</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{expiringDocs.length}</div>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Valid</p>
+                <p className="text-2xl font-bold text-gray-900">{statusSummary.valid}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Urgent action needed</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{expiredDocs.length}</div>
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <Clock className="h-8 w-8 text-yellow-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Expiring Soon</p>
+                <p className="text-2xl font-bold text-gray-900">{statusSummary.expiring}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall compliance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {documents.length > 0 ? Math.round((validDocs.length / documents.length) * 100) : 0}%
+          <CardContent className="p-6">
+            <div className="flex items-center">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600">Expired</p>
+                <p className="text-2xl font-bold text-gray-900">{statusSummary.expired}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -239,133 +202,146 @@ export default function CompliancePage() {
 
       {/* Filters */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by truck registration or certificate number..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
-              </div>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="mr-2 h-5 w-5" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search documents..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
+
+            {/* Status Filter */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger>
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="valid">Valid</SelectItem>
-                <SelectItem value="expiring">Expiring</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="VALID">Valid</SelectItem>
+                <SelectItem value="EXPIRING_SOON">Expiring Soon</SelectItem>
+                <SelectItem value="EXPIRED">Expired</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Type Filter */}
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger>
                 <SelectValue placeholder="Filter by type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="insurance">Insurance</SelectItem>
-                <SelectItem value="ntsa">NTSA Inspection</SelectItem>
-                <SelectItem value="license">Licenses</SelectItem>
+                {Object.entries(documentTypeLabels).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Documents List */}
-      {isLoading ? (
-        <div className="flex justify-center items-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredDocuments.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground mb-4">
-                    {documents.length === 0 
-                      ? 'Start by adding your first compliance document' 
-                      : 'No documents match your current filters'}
-                  </p>
-                  {documents.length === 0 && (
-                    <Button onClick={() => setShowAddForm(true)}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add First Document
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+      {/* Documents Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Compliance Documents ({filteredDocuments.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin mr-4" />
+              <span>Loading compliance documents...</span>
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Documents Found</h3>
+              <p className="text-gray-600 mb-4">
+                {documents.length === 0 
+                  ? "No compliance documents have been added yet."
+                  : "No documents match your current filters."
+                }
+              </p>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add First Document
+              </Button>
+            </div>
           ) : (
-            filteredDocuments.map((document) => (
-              <Card key={document.id}>
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-lg">
-                          {document.truck.registration}
-                        </h3>
-                        {getStatusBadge(document.status, document.daysToExpiry)}
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-1">
-                        {document.truck.make} {document.truck.model}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Certificate: {document.certificateNumber}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant="outline" className="mb-2">
-                        {getDocumentTypeDisplay(document.documentType)}
-                      </Badge>
-                      <p className="text-sm text-muted-foreground">
-                        Expires: {format(new Date(document.expiryDate), 'MMM dd, yyyy')}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Issue Date</p>
-                      <p className="font-medium">{format(new Date(document.issueDate), 'MMM dd, yyyy')}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Issuing Authority</p>
-                      <p className="font-medium">{document.issuingAuthority}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Days to Expiry</p>
-                      <p className="font-medium">{document.daysToExpiry}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Added by</p>
-                      <p className="font-medium">{document.user.name}</p>
-                    </div>
-                  </div>
-                  
-                  {document.documentUrl && (
-                    <div className="mt-4 pt-4 border-t">
-                      <Button variant="outline" size="sm" asChild>
-                        <a href={document.documentUrl} target="_blank" rel="noopener noreferrer">
-                          View Document
-                        </a>
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Document</TableHead>
+                    <TableHead>Truck</TableHead>
+                    <TableHead>Certificate #</TableHead>
+                    <TableHead>Issue Date</TableHead>
+                    <TableHead>Expiry Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Authority</TableHead>
+                    <TableHead>Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredDocuments.map((doc) => (
+                    <TableRow key={doc.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{documentTypeLabels[doc.documentType]}</p>
+                          <p className="text-sm text-gray-500">{doc.documentType}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{doc.truck.registration}</p>
+                          <p className="text-sm text-gray-500">{doc.truck.make} {doc.truck.model}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono">{doc.certificateNumber}</TableCell>
+                      <TableCell>
+                        {format(new Date(doc.issueDate), 'MMM dd, yyyy')}
+                      </TableCell>
+                      <TableCell>
+                        {doc.expiryDate ? (
+                          <div>
+                            <p>{format(new Date(doc.expiryDate), 'MMM dd, yyyy')}</p>
+                            {doc.daysToExpiry > 0 && (
+                              <p className="text-xs text-gray-500">
+                                {doc.daysToExpiry} days left
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">No expiry</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${statusColors[doc.status]} flex items-center gap-1`}>
+                          {doc.status === 'VALID' && <CheckCircle className="h-3 w-3" />}
+                          {doc.status === 'EXPIRED' && <AlertTriangle className="h-3 w-3" />}
+                          {doc.status === 'EXPIRING_SOON' && <Clock className="h-3 w-3" />}
+                          {doc.status.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{doc.issuingAuthority}</TableCell>
+                      <TableCell>{formatCurrency(doc.cost)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </div>
-      )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

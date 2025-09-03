@@ -1,21 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CalendarIcon, Loader2, Upload, FileText, X, AlertCircle } from 'lucide-react'
 import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { CalendarIcon, Upload, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
-
-interface AddComplianceDocumentFormProps {
-  onSuccess: () => void
-  onCancel: () => void
-}
+import { cn } from '@/lib/utils'
 
 interface Truck {
   id: string
@@ -24,26 +22,46 @@ interface Truck {
   model: string
 }
 
-export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddComplianceDocumentFormProps) {
+interface FormData {
+  truckId: string
+  documentType: string
+  certificateNumber: string
+  issueDate: Date | null
+  expiryDate: Date | null
+  cost: number
+  issuingAuthority: string
+  notes: string
+  documentFile: File | null
+}
+
+const documentTypes = [
+  { value: 'TGL_LICENSE', label: 'Transit Goods License' },
+  { value: 'COMMERCIAL_LICENSE', label: 'Commercial License' },
+  { value: 'INSURANCE', label: 'Insurance Certificate' },
+  { value: 'NTSA_INSPECTION', label: 'NTSA Inspection' }
+]
+
+export default function AddComplianceDocumentForm() {
+  const router = useRouter()
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [issueDateOpen, setIssueDateOpen] = useState(false)
-  const [expiryDateOpen, setExpiryDateOpen] = useState(false)
-  const [issueDate, setIssueDate] = useState<Date>()
-  const [expiryDate, setExpiryDate] = useState<Date>()
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     truckId: '',
     documentType: '',
     certificateNumber: '',
-    cost: '',
-    issuingAuthority: ''
+    issueDate: null,
+    expiryDate: null,
+    cost: 0,
+    issuingAuthority: '',
+    notes: '',
+    documentFile: null
   })
 
+  // Fetch trucks on component mount
   useEffect(() => {
     fetchTrucks()
   }, [])
@@ -51,231 +69,185 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
   const fetchTrucks = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/trucks', {
-        cache: 'no-store'
-      })
+      const response = await fetch('/api/trucks')
       
-      if (response.ok) {
-        const data = await response.json()
-        setTrucks(data.trucks || [])
-        console.log('✅ Loaded trucks:', data.trucks?.length || 0)
-      } else {
-        console.error('❌ Failed to fetch trucks:', response.status)
-        toast.error('Failed to load trucks')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Failed to fetch trucks`)
       }
-    } catch (error) {
-      console.error('❌ Error fetching trucks:', error)
+      
+      const data = await response.json()
+      setTrucks(data.trucks || [])
+    } catch (err) {
+      console.error('Error fetching trucks:', err)
       toast.error('Failed to load trucks')
+      setError(err instanceof Error ? err.message : 'Failed to load trucks')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    // Clear field error when user starts typing
-    if (formErrors[field]) {
-      setFormErrors(prev => ({ ...prev, [field]: '' }))
+  const handleInputChange = (field: keyof FormData, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+    
+    // Clear error when user starts typing
+    if (error) {
+      setError(null)
     }
   }
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {}
+  const uploadDocument = async (file: File): Promise<string | null> => {
+    if (!file) return null
 
-    if (!formData.truckId) errors.truckId = 'Please select a truck'
-    if (!formData.documentType) errors.documentType = 'Please select document type'
-    if (!formData.certificateNumber.trim()) errors.certificateNumber = 'Certificate number is required'
-    if (!issueDate) errors.issueDate = 'Issue date is required'
-    if (!formData.issuingAuthority.trim()) errors.issuingAuthority = 'Issuing authority is required'
-    if (!formData.cost.trim() || isNaN(parseFloat(formData.cost))) {
-      errors.cost = 'Please enter a valid cost amount'
-    }
-
-    // Date validation
-    if (issueDate && expiryDate && expiryDate <= issueDate) {
-      errors.expiryDate = 'Expiry date must be after issue date'
-    }
-
-    setFormErrors(errors)
-    return Object.keys(errors).length === 0
-  }
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    // Validate file type
-    const allowedTypes = [
-      'application/pdf',
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ]
-
-    if (!allowedTypes.includes(file.type)) {
-      toast.error('Please upload PDF, Word document, or image files only')
-      return
-    }
-
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB')
-      return
-    }
-
-    setUploadedFile(file)
-    toast.success('Document selected successfully!')
-  }
-
-  const removeUploadedFile = () => {
-    setUploadedFile(null)
-    const fileInput = document.getElementById('documentFile') as HTMLInputElement
-    if (fileInput) {
-      fileInput.value = ''
-    }
-  }
-
-  const uploadFileToStorage = async (file: File): Promise<string | null> => {
     try {
-      setUploadProgress(10)
       const formData = new FormData()
       formData.append('file', file)
       formData.append('type', 'compliance')
-      
-      setUploadProgress(30)
-      
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       })
-      
-      setUploadProgress(70)
-      
-      if (response.ok) {
-        const data = await response.json()
-        setUploadProgress(100)
-        return data.url || data.filePath
-      } else {
-        throw new Error('Upload failed')
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Upload failed with status ${response.status}`)
       }
-    } catch (error) {
-      console.error('❌ Error uploading file:', error)
-      setUploadProgress(0)
-      return null
+
+      const data = await response.json()
+      return data.filePath || null
+    } catch (err) {
+      console.error('Upload error:', err)
+      throw new Error(err instanceof Error ? err.message : 'File upload failed')
     }
+  }
+
+  const validateForm = (): string | null => {
+    if (!formData.truckId) return 'Please select a truck'
+    if (!formData.documentType) return 'Please select a document type'
+    if (!formData.certificateNumber.trim()) return 'Certificate number is required'
+    if (!formData.issueDate) return 'Issue date is required'
+    if (!formData.issuingAuthority.trim()) return 'Issuing authority is required'
+    
+    // Check if expiry date is before issue date
+    if (formData.expiryDate && formData.issueDate) {
+      if (formData.expiryDate <= formData.issueDate) {
+        return 'Expiry date must be after issue date'
+      }
+    }
+
+    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    console.log('🚀 Form submission started')
-    
-    // Validate form
-    if (!validateForm()) {
-      console.log('❌ Form validation failed:', formErrors)
-      toast.error('Please fix the errors in the form')
-      return
-    }
-
-    console.log('✅ Form validation passed')
-
     try {
       setIsSubmitting(true)
-      
-      // Upload file if exists
-      let documentUrl = ''
-      if (uploadedFile) {
-        console.log('📤 Uploading file:', uploadedFile.name)
-        toast.info('Uploading document...')
-        
-        documentUrl = await uploadFileToStorage(uploadedFile)
-        if (!documentUrl) {
-          toast.error('Failed to upload document. Please try again.')
-          return
-        }
-        
-        console.log('✅ File uploaded successfully')
+      setError(null)
+  
+      // Validate form
+      const validationError = validateForm()
+      if (validationError) {
+        setError(validationError)
+        toast.error(validationError)
+        return
       }
-
-      // Prepare compliance data
-      const complianceData = {
+  
+      // Upload document if provided
+      let documentUrl: string | null = null
+      if (formData.documentFile) {
+        try {
+          setUploadProgress(25)
+          documentUrl = await uploadDocument(formData.documentFile)
+          setUploadProgress(50)
+        } catch (uploadError) {
+          throw new Error(`File upload failed: ${uploadError.message}`)
+        }
+      }
+  
+      // Prepare submission data
+      const submissionData = {
         truckId: formData.truckId,
         documentType: formData.documentType,
         certificateNumber: formData.certificateNumber.trim(),
-        issueDate: issueDate!.toISOString(),
-        expiryDate: expiryDate ? expiryDate.toISOString() : null,
-        cost: parseFloat(formData.cost),
+        issueDate: formData.issueDate?.toISOString(),
+        expiryDate: formData.expiryDate?.toISOString() || null,
+        cost: parseFloat(formData.cost.toString()) || 0,
         issuingAuthority: formData.issuingAuthority.trim(),
-        documentUrl: documentUrl || null
+        notes: formData.notes.trim() || null,
+        documentUrl
       }
-
-      console.log('[DEBUG] Sending compliance payload:', JSON.stringify(complianceData, null, 2))
-
-      // Make API request with enhanced error handling
+  
+      console.log('📤 Submitting compliance document:', submissionData)
+      setUploadProgress(75)
+  
+      // Submit to API
       const response = await fetch('/api/compliance', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(complianceData)
+        body: JSON.stringify(submissionData)
       })
-
-      console.log('[DEBUG] Response status:', response.status)
-      console.log('[DEBUG] Response headers:', Object.fromEntries(response.headers.entries()))
-
-      // Get response text first to debug
-      const responseText = await response.text()
-      console.log('[DEBUG] Raw response text:', responseText)
-
-      // Parse response
-      let responseData: any
+  
+      setUploadProgress(100)
+  
+      // Parse response (always try to parse JSON)
+      let responseData
       try {
-        responseData = JSON.parse(responseText)
-        console.log('[DEBUG] Parsed response data:', responseData)
+        responseData = await response.json()
       } catch (parseError) {
-        console.error('[DEBUG] Failed to parse response as JSON:', parseError)
-        console.error('[DEBUG] Raw response was:', responseText)
-        toast.error('Invalid server response - check console for details')
-        return
+        console.error('❌ Failed to parse response:', parseError)
+        throw new Error(`Server error (${response.status}): Invalid response format`)
       }
-
-      // Handle success
-      if (response.ok && responseData.success) {
-        console.log('[DEBUG] ✅ Success response:', responseData)
-        toast.success(responseData.message || 'Compliance document added successfully!')
-        onSuccess()
-        onCancel()
-        return
+  
+      console.log('📨 API Response:', responseData)
+  
+      if (!response.ok) {
+        const errorMessage = responseData.message || 
+                            responseData.error || 
+                            `Server error (${response.status})`
+        
+        console.error('❌ API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: responseData
+        })
+        
+        throw new Error(errorMessage)
       }
-
-      // Handle API errors
-      console.error('[DEBUG] ❌ API error response:', responseData)
+  
+      // Success handling
+      if (responseData.success) {
+        toast.success(responseData.message || 'Compliance document created successfully!')
+        
+        // Reset form
+        setFormData({
+          truckId: '',
+          documentType: '',
+          certificateNumber: '',
+          issueDate: null,
+          expiryDate: null,
+          cost: 0,
+          issuingAuthority: '',
+          notes: '',
+          documentFile: null
+        })
+        
+        // Navigate back
+        router.push('/compliance')
+      } else {
+        throw new Error(responseData.message || 'Unknown error occurred')
+      }
+  
+    } catch (err) {
+      console.error('🚨 Form submission error:', err)
       
-      let errorMessage = 'Failed to add compliance document'
-      
-      if (responseData.error) {
-        errorMessage = responseData.error
-      } else if (responseData.details) {
-        errorMessage = responseData.details
-      } else if (responseData.message) {
-        errorMessage = responseData.message
-      } else if (!response.ok) {
-        errorMessage = `Server error: ${response.status} ${response.statusText}`
-      }
-
-      // Show specific error details if available
-      if (responseData.missingFields && Array.isArray(responseData.missingFields)) {
-        errorMessage = `Missing required fields: ${responseData.missingFields.join(', ')}`
-      }
-
-      console.error('[DEBUG] Displaying error to user:', errorMessage)
-      toast.error(errorMessage)
-
-    } catch (networkError: any) {
-      console.error('[DEBUG] ❌ Network/fetch error:', networkError)
-      const errorMessage = networkError?.message || 'Network error - please check your connection'
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred'
+      setError(errorMessage)
       toast.error(errorMessage)
     } finally {
       setIsSubmitting(false)
@@ -283,342 +255,252 @@ export function AddComplianceDocumentForm({ onSuccess, onCancel }: AddCompliance
     }
   }
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
-
-  const getFileIcon = (fileType: string) => {
-    if (fileType.includes('pdf')) return '📄'
-    if (fileType.includes('image')) return '🖼️'
-    if (fileType.includes('word') || fileType.includes('document')) return '📝'
-    return '📄'
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading trucks...</span>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Truck Selection */}
-        <div className="space-y-2">
-          <Label htmlFor="truckId">Truck *</Label>
-          <Select 
-            value={formData.truckId} 
-            onValueChange={(value) => handleInputChange('truckId', value)}
-          >
-            <SelectTrigger className={cn(formErrors.truckId && "border-red-500")}>
-              <SelectValue placeholder="Select truck" />
-            </SelectTrigger>
-            <SelectContent>
-              {trucks.map((truck) => (
-                <SelectItem key={truck.id} value={truck.id}>
-                  {truck.registration} - {truck.make} {truck.model}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {formErrors.truckId && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.truckId}
-            </p>
-          )}
-        </div>
-
-        {/* Document Type */}
-        <div className="space-y-2">
-          <Label htmlFor="documentType">Document Type *</Label>
-          <Select 
-            value={formData.documentType} 
-            onValueChange={(value) => handleInputChange('documentType', value)}
-          >
-            <SelectTrigger className={cn(formErrors.documentType && "border-red-500")}>
-              <SelectValue placeholder="Select document type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NTSA_INSPECTION">NTSA Inspection</SelectItem>
-              <SelectItem value="INSURANCE">Insurance Certificate</SelectItem>
-              <SelectItem value="TGL_LICENSE">TGL License</SelectItem>
-              <SelectItem value="COMMERCIAL_LICENSE">Commercial License</SelectItem>
-              <SelectItem value="ROAD_LICENSE">Road License</SelectItem>
-              <SelectItem value="OPERATING_LICENSE">Operating License</SelectItem>
-            </SelectContent>
-          </Select>
-          {formErrors.documentType && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.documentType}
-            </p>
-          )}
-        </div>
-
-        {/* Certificate Number */}
-        <div className="space-y-2">
-          <Label htmlFor="certificateNumber">Certificate Number *</Label>
-          <Input
-            id="certificateNumber"
-            value={formData.certificateNumber}
-            onChange={(e) => handleInputChange('certificateNumber', e.target.value)}
-            placeholder="Enter certificate number"
-            className={cn(formErrors.certificateNumber && "border-red-500")}
-          />
-          {formErrors.certificateNumber && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.certificateNumber}
-            </p>
-          )}
-        </div>
-
-        {/* Cost Field */}
-        <div className="space-y-2">
-          <Label htmlFor="cost">Cost (KSh) *</Label>
-          <Input
-            id="cost"
-            type="number"
-            step="0.01"
-            min="0"
-            value={formData.cost}
-            onChange={(e) => handleInputChange('cost', e.target.value)}
-            placeholder="Enter document cost"
-            className={cn(formErrors.cost && "border-red-500")}
-          />
-          {formErrors.cost && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.cost}
-            </p>
-          )}
-        </div>
-
-        {/* Issue Date */}
-        <div className="space-y-2">
-          <Label>Issue Date *</Label>
-          <Popover open={issueDateOpen} onOpenChange={setIssueDateOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !issueDate && "text-muted-foreground",
-                  formErrors.issueDate && "border-red-500"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {issueDate ? format(issueDate, "PPP") : <span>Pick issue date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={issueDate}
-                onSelect={(date) => {
-                  setIssueDate(date!)
-                  setIssueDateOpen(false)
-                  if (formErrors.issueDate) {
-                    setFormErrors(prev => ({ ...prev, issueDate: '' }))
-                  }
-                }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          {formErrors.issueDate && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.issueDate}
-            </p>
-          )}
-        </div>
-
-        {/* Expiry Date */}
-        <div className="space-y-2">
-          <Label>Expiry Date (Optional)</Label>
-          <Popover open={expiryDateOpen} onOpenChange={setExpiryDateOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !expiryDate && "text-muted-foreground",
-                  formErrors.expiryDate && "border-red-500"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {expiryDate ? format(expiryDate, "PPP") : <span>Pick expiry date</span>}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={expiryDate}
-                onSelect={(date) => {
-                  setExpiryDate(date!)
-                  setExpiryDateOpen(false)
-                  if (formErrors.expiryDate) {
-                    setFormErrors(prev => ({ ...prev, expiryDate: '' }))
-                  }
-                }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          {formErrors.expiryDate && (
-            <p className="text-sm text-red-500 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {formErrors.expiryDate}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Issuing Authority */}
-      <div className="space-y-2">
-        <Label htmlFor="issuingAuthority">Issuing Authority *</Label>
-        <Input
-          id="issuingAuthority"
-          value={formData.issuingAuthority}
-          onChange={(e) => handleInputChange('issuingAuthority', e.target.value)}
-          placeholder="e.g., NTSA, Insurance Company Name"
-          className={cn(formErrors.issuingAuthority && "border-red-500")}
-        />
-        {formErrors.issuingAuthority && (
-          <p className="text-sm text-red-500 flex items-center">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            {formErrors.issuingAuthority}
-          </p>
-        )}
-      </div>
-
-      {/* Document Upload */}
-      <div className="space-y-2">
-        <Label htmlFor="documentFile">Upload Document (Optional)</Label>
-        <p className="text-sm text-muted-foreground">
-          Upload the compliance document (PDF, Word, or Image files up to 10MB)
-        </p>
-
-        {!uploadedFile ? (
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <input
-              type="file"
-              id="documentFile"
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => document.getElementById('documentFile')?.click()}
-              className="mx-auto"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              Click to upload document
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              PDF, DOC, DOCX, JPG, PNG up to 10MB
-            </p>
+    <Card className="max-w-2xl mx-auto">
+      <CardHeader>
+        <CardTitle className="flex items-center space-x-2">
+          <Upload className="h-5 w-5" />
+          <span>Add Compliance Document</span>
+        </CardTitle>
+      </CardHeader>
+      
+      <CardContent>
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3">
+            <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="text-sm font-semibold text-red-800">Error</h4>
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
           </div>
-        ) : (
-          <div className="border border-gray-200 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <span className="text-2xl">{getFileIcon(uploadedFile.type)}</span>
-                <div>
-                  <p className="font-medium">{uploadedFile.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatFileSize(uploadedFile.size)} • {uploadedFile.type}
-                  </p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={removeUploadedFile}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+        )}
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Loading trucks...</p>
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Truck Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="truck">Truck *</Label>
+            <Select
+              value={formData.truckId}
+              onValueChange={(value) => handleInputChange('truckId', value)}
+              disabled={isSubmitting || isLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a truck" />
+              </SelectTrigger>
+              <SelectContent>
+                {trucks.map((truck) => (
+                  <SelectItem key={truck.id} value={truck.id}>
+                    {truck.registration} - {truck.make} {truck.model}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Document Type */}
+          <div className="space-y-2">
+            <Label htmlFor="documentType">Document Type *</Label>
+            <Select
+              value={formData.documentType}
+              onValueChange={(value) => handleInputChange('documentType', value)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select document type" />
+              </SelectTrigger>
+              <SelectContent>
+                {documentTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Certificate Number */}
+          <div className="space-y-2">
+            <Label htmlFor="certificateNumber">Certificate Number *</Label>
+            <Input
+              id="certificateNumber"
+              value={formData.certificateNumber}
+              onChange={(e) => handleInputChange('certificateNumber', e.target.value)}
+              placeholder="Enter certificate/document number"
+              disabled={isSubmitting}
+              required
+            />
+          </div>
+
+          {/* Dates */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Issue Date */}
+            <div className="space-y-2">
+              <Label>Issue Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formData.issueDate && "text-muted-foreground"
+                    )}
+                    disabled={isSubmitting}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.issueDate ? (
+                      format(formData.issueDate, "PPP")
+                    ) : (
+                      "Pick issue date"
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={formData.issueDate}
+                    onSelect={(date) => handleInputChange('issueDate', date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
-            {/* Upload Progress */}
-            {uploadProgress > 0 && uploadProgress < 100 && (
-              <div className="mt-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Uploading...</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
-              </div>
-            )}
+            {/* Expiry Date */}
+            <div className="space-y-2">
+              <Label>Expiry Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !formData.expiryDate && "text-muted-foreground"
+                    )}
+                    disabled={isSubmitting}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {formData.expiryDate ? (
+                      format(formData.expiryDate, "PPP")
+                    ) : (
+                      "Pick expiry date"
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={formData.expiryDate}
+                    onSelect={(date) => handleInputChange('expiryDate', date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
 
-            {/* Replace button */}
+          {/* Cost and Authority */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cost */}
+            <div className="space-y-2">
+              <Label htmlFor="cost">Cost (KSh)</Label>
+              <Input
+                id="cost"
+                type="number"
+                value={formData.cost}
+                onChange={(e) => handleInputChange('cost', parseFloat(e.target.value) || null)}
+                
+                min="0"
+                step="0.01"
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Issuing Authority */}
+            <div className="space-y-2">
+              <Label htmlFor="issuingAuthority">Issuing Authority *</Label>
+              <Input
+                id="issuingAuthority"
+                value={formData.issuingAuthority}
+                onChange={(e) => handleInputChange('issuingAuthority', e.target.value)}
+                placeholder="e.g., NTSA, KRA"
+                disabled={isSubmitting}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Document Upload */}
+          <div className="space-y-2">
+            <Label htmlFor="documentFile">Document File</Label>
+            <Input
+              id="documentFile"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={(e) => handleInputChange('documentFile', e.target.files?.[0] || null)}
+              disabled={isSubmitting}
+            />
+            <p className="text-xs text-muted-foreground">
+              Accepted formats: PDF, JPG, PNG (Max 10MB)
+            </p>
+          </div>
+
+          {/* Upload Progress */}
+          {uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Processing...</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <div className="flex space-x-4">
+            <Button
+              type="submit"
+              disabled={isSubmitting || isLoading}
+              className="flex-1"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Document...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Create Compliance Document
+                </>
+              )}
+            </Button>
+
             <Button
               type="button"
               variant="outline"
-              size="sm"
-              onClick={() => document.getElementById('documentFile')?.click()}
-              className="w-full mt-3"
+              onClick={() => router.back()}
+              disabled={isSubmitting}
             >
-              <Upload className="mr-2 h-4 w-4" />
-              Replace Document
+              Cancel
             </Button>
           </div>
-        )}
-
-        {/* Hidden file input */}
-        <input
-          type="file"
-          id="documentFile"
-          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-          onChange={handleFileUpload}
-          className="hidden"
-        />
-      </div>
-
-      {/* Form Actions */}
-      <div className="flex justify-end space-x-3 pt-4">
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={onCancel} 
-          disabled={isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button 
-          type="submit" 
-          disabled={isSubmitting}
-          className="min-w-32"
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {uploadedFile ? 'Uploading & Adding...' : 'Adding Document...'}
-            </>
-          ) : (
-            'Add Document'
-          )}
-        </Button>
-      </div>
-    </form>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
