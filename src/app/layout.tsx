@@ -2,9 +2,10 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { QueryProvider } from '@/components/providers/QueryProvider'
+import QueryProvider from '@/components/providers/QueryProvider'
 import { ThemeProvider } from '@/context/theme-context'
 import SessionProvider from '@/components/providers/SessionProvider'
+import 'animate.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
