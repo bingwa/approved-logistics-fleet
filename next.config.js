@@ -3,6 +3,29 @@ const nextConfig = {
   // For Prisma on Vercel - ensures Prisma Client works properly
   serverExternalPackages: ['@prisma/client'],
   
+  // ADDED: Experimental settings for puppeteer and chromium
+  experimental: {
+    serverComponentsExternalPackages: [
+      '@prisma/client',
+      'puppeteer-core', 
+      '@sparticuz/chromium'
+    ]
+  },
+  
+  // ADDED: Webpack configuration to exclude packages from bundling
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Externalize these packages to avoid bundling issues
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : []),
+        '@prisma/client',
+        'puppeteer-core',
+        '@sparticuz/chromium'
+      ]
+    }
+    return config
+  },
+  
   // Image optimization
   images: {
     remotePatterns: [
