@@ -95,27 +95,24 @@ model SparePart {
 }
 
 model ComplianceDocument {
-  id                String   @id @default(cuid())
-  truckId           String
-  userId            String?          // nullable for safety
-  documentType      String
-  certificateNumber String
-  issueDate         DateTime
-  expiryDate        DateTime?
-  status            String   @default("VALID")
-  cost              Float    @default(0)
-  issuingAuthority  String?
-  documentUrl       String?
-  daysToExpiry      Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  truck Truck @relation(fields: [truckId], references: [id], onDelete: Cascade)
-  user  User?  @relation(fields: [userId], references: [id])
-
+  id                 String        @id @default(cuid())
+  truckId            String
+  userId             String?
+  documentType       DocumentType  // ← was String, make it a Prisma enum
+  certificateNumber  String        @unique
+  issueDate          DateTime
+  expiryDate         DateTime?
+  status             String        @default("VALID")
+  cost               Float         @default(0)
+  issuingAuthority   String?
+  documentUrl        String?
+  daysToExpiry       Int           @default(0)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  truck              Truck         @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  user               User?         @relation(fields: [userId], references: [id])
   @@map("compliance_documents")
 }
-
 
 
 model ReportGeneration {
