@@ -15,6 +15,8 @@ import { format } from 'date-fns'
 // FIXED: Correct default import (no curly braces)
 import AddComplianceDocumentForm from '@/components/forms/AddComplianceDocumentForm'
 
+export const dynamic = 'force-dynamic'
+
 interface ComplianceDocument {
   id: string
   documentType: string
@@ -67,12 +69,17 @@ export default function CompliancePage() {
   const fetchDocuments = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/compliance')
+      const response = await fetch('/api/compliance', {
+        cache: 'no-store', // Disable caching
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
       
       if (!response.ok) {
         throw new Error('Failed to fetch compliance documents')
       }
-
+  
       const data = await response.json()
       setDocuments(data.data || [])
     } catch (error) {
