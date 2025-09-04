@@ -85,7 +85,7 @@ function SignInContent() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="admin@approvedlogistics.co.ke"
+                    placeholder="admin@fleetmanager.co.ke"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10"
@@ -149,7 +149,7 @@ function SignInContent() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Admin:</span>
-                    <code className="text-xs bg-background px-2 py-1 rounded">admin@approvedlogistics.co.ke</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded">admin@fleetmanager.co.ke</code>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Password:</span>
