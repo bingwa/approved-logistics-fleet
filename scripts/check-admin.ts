@@ -1,7 +1,6 @@
 // scripts/check-admin.ts
-import { PrismaClient } from '@prisma/client'
+import prisma from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 async function checkAdmin() {
   try {

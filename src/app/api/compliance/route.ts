@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
     }, { status: 500 })
   } finally {
     try {
-      await prisma.$disconnect()
+      /*await prisma.$disconnect()*/
     } catch (disconnectError) {
       console.error('⚠️ [COMPLIANCE GET] Database disconnect error:', disconnectError)
     }

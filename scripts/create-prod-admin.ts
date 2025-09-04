@@ -1,8 +1,7 @@
 // Create this script: scripts/create-prod-admin.ts
 import bcrypt from 'bcryptjs'
-import { PrismaClient } from '@prisma/client'
+import prisma from '@/lib/prisma'
 
-const prisma = new PrismaClient()
 
 async function createAdmin() {
   const hashedPassword = await bcrypt.hash('admin123', 12)
