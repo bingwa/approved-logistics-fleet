@@ -1,5 +1,5 @@
 // src/app/api/debug-auth/route.ts
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { NextResponse } from 'next/server'
 

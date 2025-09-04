@@ -1,15 +1,16 @@
-import { PrismaClient } from '@prisma/client'
+// src/lib/prisma.ts
+import { PrismaClient } from '@prisma/client';
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
+const globalForPrisma = globalThis as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: ['error'],
-})
+const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ['error'],          // optional: ['query','info','warn','error']
+  });
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
+  globalForPrisma.prisma = prisma;   // prevent new instances on hot-reload
 }
 
-export default prisma
+export default prisma;               // <<< default export
