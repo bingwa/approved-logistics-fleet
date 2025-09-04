@@ -10,7 +10,7 @@ import 'animate.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Approved Logistics Limited - Fleet Management',
+  title: 'Fleet Management System',
   description: 'Comprehensive fleet management system for Approved Logistics Limited',
   manifest: '/manifest.json',
   appleWebApp: {
