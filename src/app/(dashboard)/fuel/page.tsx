@@ -187,7 +187,6 @@ export default function FuelManagementPage() {
     </div>
     
     <div class="info">
-        <p><strong>Location:</strong> Approved Logistics Company Depot</p>
         <p><strong>Current Rate:</strong> KSh ${avgCostPerLiter.toFixed(2)} per liter (average)</p>
         <p><strong>Report Period:</strong> ${new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })}</p>
         <p><strong>Total Records:</strong> ${records.length}</p>
