@@ -182,7 +182,7 @@ export default function FuelManagementPage() {
 <body>
     <div class="header">
         <h1>FUEL EFFICIENCY REPORT</h1>
-        <h2>Approved Logistics Company</h2>
+        <h2>Fleet Manager</h2>
         <p><strong>Generated on:</strong> ${currentDate}</p>
     </div>
     
