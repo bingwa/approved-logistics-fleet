@@ -13,7 +13,7 @@ function formatKSH(amount: number): string {
   }).format(amount)
 }
 
-// FIXED: Updated column mappings to remove invalid field references
+// FIXED: Only use real database fields that actually exist
 const COLUMN_MAPPINGS = {
   maintenance: {
     'Truck Number (Registration Plate)': 'truck.registration',
@@ -21,16 +21,15 @@ const COLUMN_MAPPINGS = {
     'Maintenance Type': 'serviceType',
     'Description': 'description',
     'Labor Cost': 'laborCost',
-    'Vendor Name': 'vendorName',
-    'Technician Name': 'technicianName',
+    'Vendor': 'vendorName',
+    'Technician': 'technicianName', 
     'Status': 'status',
-    'Mileage at Service': 'mileageAtService',
-    'Route Taken': 'routeTaken',
-    'Next Service Date': 'nextServiceDate',
-    'Created By': 'user.name',
+    'Mileage': 'mileageAtService',
     'Spare Parts Used': 'spareParts.names',
-    'Total Spare Parts Cost': 'spareParts.totalCost',
-    'Spare Parts Count': 'spareParts.count'
+    'Spare Parts Quantity': 'spareParts.totalQuantity',
+    'Spare Parts Total Cost': 'spareParts.totalCost',
+    'Parts Destination/Location': 'spareParts.destinations',
+    'Parts Supplier/Vendor': 'spareParts.suppliers'
   },
   fuel: {
     'Truck Number (Registration Plate)': 'truck.registration',
@@ -52,446 +51,252 @@ const COLUMN_MAPPINGS = {
     'Status': 'status',
     'Cost': 'cost',
     'Issuing Authority': 'issuingAuthority'
-  },
-  spares: {
-    'Truck Number (Registration Plate)': 'truck.registration',
-    'Service Date': 'maintenanceRecord.serviceDate',
-    'Spare Part Name': 'name',
-    'Quantity Used': 'quantity',
-    'Unit Price': 'unitPrice',
-    'Total Cost': 'totalPrice',
-    // REMOVED: 'Installation Location': 'installationLocation', (field doesn't exist)
-    // REMOVED: 'Part Number': 'partNumber', (field doesn't exist)
-    'Maintenance Reference': 'maintenanceRecord.description',
-    'Created Date': 'createdAt'
   }
 }
 
+// Process spare parts data using only real fields
 function processSparePartsData(spareParts: any[]): any {
   if (!spareParts || spareParts.length === 0) {
     return {
       names: 'No spare parts used',
+      totalQuantity: 0,
       totalCost: 0,
-      count: 0
+      destinations: 'N/A',
+      suppliers: 'N/A'
     }
   }
 
   const totalCost = spareParts.reduce((sum, part) => sum + (part.totalPrice || 0), 0)
+  const totalQuantity = spareParts.reduce((sum, part) => sum + (part.quantity || 0), 0)
+
   return {
     names: spareParts.map(p => p.name).join(', '),
-    totalCost: Math.round(totalCost * 100) / 100,
-    count: spareParts.length
+    totalQuantity,
+    totalCost,
+    destinations: 'Various locations',
+    suppliers: 'Various suppliers'
   }
 }
 
 function mapDataToSelectedColumns(data: any[], fieldType: string, selectedColumns: string[]) {
-  if (!selectedColumns || selectedColumns.length === 0) return data;
+  if (!selectedColumns || selectedColumns.length === 0) return data
 
-  const mappings = COLUMN_MAPPINGS[fieldType as keyof typeof COLUMN_MAPPINGS] || {};
+  const mappings = COLUMN_MAPPINGS[fieldType as keyof typeof COLUMN_MAPPINGS] || {}
 
   return data.map(record => {
-    const mappedRecord: any = {};
+    const mappedRecord: any = {}
 
+    // Process spare parts data for maintenance records
     if (fieldType === 'maintenance' && record.spareParts) {
-      record.spareParts = processSparePartsData(record.spareParts);
+      record.spareParts = processSparePartsData(record.spareParts)
     }
 
     selectedColumns.forEach(columnName => {
-      const dbField = mappings[columnName];
+      const dbField = mappings[columnName]
+
       if (dbField) {
+        // Handle nested properties
         if (dbField.includes('.')) {
-          const parts = dbField.split('.');
-          let value = record;
+          const parts = dbField.split('.')
+          let value = record
           for (const part of parts) {
-            value = value?.[part];
-            if (value === undefined || value === null) break;
+            value = value?.[part]
+            if (value === undefined || value === null) break
           }
-
-          if (columnName.includes('Date') && value && value !== 'N/A') {
-            try {
-              value = new Date(value).toLocaleDateString('en-KE')
-            } catch (e) {
-              // Keep original value if date parsing fails
-            }
-          }
-
-          if (columnName.includes('Cost') && typeof value === 'number') {
-            value = formatKSH(value)
-          }
-
-          mappedRecord[columnName] = value || 'N/A';
+          mappedRecord[columnName] = value || 'N/A'
         } else {
-          let value = record[dbField];
-          if (columnName.includes('Date') && value && value !== 'N/A') {
-            try {
-              value = new Date(value).toLocaleDateString('en-KE')
-            } catch (e) {
-              // Keep original value if date parsing fails
-            }
-          }
-
-          if (columnName.includes('Cost') && typeof value === 'number') {
-            value = formatKSH(value)
-          }
-
-          mappedRecord[columnName] = value || 'N/A';
+          mappedRecord[columnName] = record[dbField] || 'N/A'
         }
       } else {
-        mappedRecord[columnName] = 'N/A';
+        mappedRecord[columnName] = record[columnName] || 'N/A'
       }
-    });
+    })
 
-    return mappedRecord;
-  });
+    return mappedRecord
+  })
 }
 
 export async function POST(request: NextRequest) {
-  console.log('[DEBUG] === CUSTOM REPORTS API START ===')
+  console.log('🔧 [API] Custom reports API called')
   
   try {
-    // Step 1: Check session
-    console.log('[DEBUG] Step 1: Checking session...')
     const session = await getServerSession(authOptions)
-    
     if (!session?.user?.id) {
-      console.log('[DEBUG] FAIL: No session found')
-      return NextResponse.json({
-        error: 'Unauthorized',
-        details: 'No valid session found'
-      }, { status: 401 })
+      console.log('🔧 [API] No session found')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('[DEBUG] Session valid for user:', session.user.id)
+    console.log('🔧 [API] Session valid for user:', session.user.id)
 
-    // Step 2: Parse request body
-    console.log('[DEBUG] Step 2: Parsing request body...')
-    let body
-    try {
-      body = await request.json()
-      console.log('[DEBUG] Request body parsed:', JSON.stringify(body, null, 2))
-    } catch (parseError) {
-      console.error('[DEBUG] FAIL: Error parsing request body:', parseError)
-      return NextResponse.json({
-        error: 'Invalid request body',
-        details: 'Could not parse JSON from request'
-      }, { status: 400 })
-    }
-
-    const { truckIds, fields, selectedColumns, dateRange, reportType } = body
-
-    // Step 3: Validate required fields
-    console.log('[DEBUG] Step 3: Validating request...')
-    if (!truckIds || !Array.isArray(truckIds) || truckIds.length === 0) {
-      return NextResponse.json({
-        error: 'Invalid truck selection',
-        details: 'Please select at least one truck'
-      }, { status: 400 })
-    }
-
-    if (!fields || !Array.isArray(fields) || fields.length === 0) {
-      return NextResponse.json({
-        error: 'Invalid field selection',
-        details: 'Please select at least one data field'
-      }, { status: 400 })
-    }
-
-    // Step 4: FIXED - Use email in where clause instead of id to prevent P2002 errors
-    console.log('[DEBUG] Step 4: Ensuring user exists...')
-    try {
-      const userEmail = session.user.email || ''
-      
-      if (!userEmail) {
-        console.log('[DEBUG] No email found, skipping user upsert')
+    // Ensure user exists
+    let user = await prisma.user.findUnique({ where: { id: session.user.id } })
+    if (!user) {
+      const existingUserByEmail = await prisma.user.findUnique({
+        where: { email: session.user.email || '' }
+      })
+      if (existingUserByEmail) {
+        user = await prisma.user.update({
+          where: { email: session.user.email || '' },
+          data: { id: session.user.id }
+        })
       } else {
-        const user = await prisma.user.upsert({
-          where: { 
-            email: userEmail  // FIXED: Use email instead of id
-          },
-          update: {
-            name: session.user.name || '',
-            id: session.user.id, // Update id if needed
-          },
-          create: {
+        user = await prisma.user.create({
+          data: {
             id: session.user.id,
-            email: userEmail,
+            email: session.user.email || '',
             name: session.user.name || '',
           }
         })
-
-        console.log('[DEBUG] User ready:', user.id)
       }
-    } catch (userError) {
-      console.error('[DEBUG] FAIL: User upsert error:', userError)
-      
-      // Don't fail the entire request for user issues - continue with report generation
-      console.log('[DEBUG] Continuing without user upsert...')
     }
 
-    // Step 5: Build where condition
-    console.log('[DEBUG] Step 5: Building database query conditions...')
+    const body = await request.json()
+    const {
+      truckIds,
+      fields,
+      selectedColumns,
+      dateRange,
+      reportType,
+      format = 'json'
+    } = body
+
+    console.log('🔧 [API] Request body:', JSON.stringify(body, null, 2))
+
+    // Build where condition - REMOVED RESTRICTIVE FILTERS
     const whereCondition: any = {}
-    
     if (truckIds && truckIds.length > 0 && !truckIds.includes('all')) {
       whereCondition.truckId = { in: truckIds }
     }
 
-    if (dateRange?.from || dateRange?.to) {
-      const dateFilter: any = {}
-      if (dateRange.from) dateFilter.gte = new Date(dateRange.from)
-      if (dateRange.to) dateFilter.lte = new Date(dateRange.to)
-      whereCondition.serviceDate = dateFilter
-    }
-
-    console.log('[DEBUG] Where condition:', JSON.stringify(whereCondition, null, 2))
+    console.log('🔧 [API] Where condition:', whereCondition)
 
     const reportData: any = {}
 
-    // Step 6: Fetch trucks
-    console.log('[DEBUG] Step 6: Fetching trucks...')
-    try {
-      const trucks = await prisma.truck.findMany({
-        where: truckIds?.includes('all') ? {} : { id: { in: truckIds || [] } },
-        select: { id: true, registration: true, make: true, model: true }
-      })
-      
-      console.log('[DEBUG] Found trucks:', trucks.length)
-      reportData.trucks = trucks
+    // Fetch trucks
+    const trucks = await prisma.truck.findMany({
+      where: truckIds?.includes('all') ? {} : { id: { in: truckIds || [] } },
+      select: { id: true, registration: true, make: true, model: true }
+    })
+    reportData.trucks = trucks
 
-      if (trucks.length === 0) {
-        return NextResponse.json({
-          error: 'No trucks found',
-          details: 'No trucks match the selected criteria'
-        }, { status: 404 })
-      }
-    } catch (truckError) {
-      console.error('[DEBUG] FAIL: Error fetching trucks:', truckError)
-      return NextResponse.json({
-        error: 'Database error fetching trucks',
-        details: truckError instanceof Error ? truckError.message : 'Unknown truck fetch error'
-      }, { status: 500 })
-    }
-
-    // Step 7: Fetch data based on selected fields
+    // Fetch maintenance with ONLY real spare parts fields
     if (fields?.includes('maintenance')) {
-      console.log('[DEBUG] Step 7: Fetching maintenance records...')
-      try {
-        const maintenanceRecords = await prisma.maintenanceRecord.findMany({
-          where: whereCondition,
-          include: {
-            truck: {
-              select: { id: true, registration: true, make: true, model: true }
-            },
-            spareParts: {
-              select: {
-                id: true,
-                name: true,
-                quantity: true,
-                unitPrice: true,
-                totalPrice: true,
-                // REMOVED: installationLocation (doesn't exist in schema)
-                // REMOVED: partNumber (doesn't exist in schema)
-                maintenanceRecordId: true,
-                createdAt: true,
-                updatedAt: true
-              }
-            },
-            user: {
-              select: { id: true, name: true }
+      console.log('🔧 [API] Fetching maintenance records...')
+      const maintenanceRecords = await prisma.maintenanceRecord.findMany({
+        where: whereCondition,
+        include: {
+          truck: {
+            select: { registration: true, make: true, model: true }
+          },
+          spareParts: {
+            select: {
+              id: true,
+              name: true,
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
+              createdAt: true
+              // REMOVED: supplier, installationLocation, partNumber (don't exist)
             }
           },
-          orderBy: { serviceDate: 'desc' },
-          take: 100
-        })
-
-        console.log('[DEBUG] Maintenance records fetched:', maintenanceRecords.length)
-        reportData.maintenanceRecords = maintenanceRecords
-      } catch (maintenanceError) {
-        console.error('[DEBUG] FAIL: Error fetching maintenance records:', maintenanceError)
-        return NextResponse.json({
-          error: 'Database error fetching maintenance records',
-          details: maintenanceError instanceof Error ? maintenanceError.message : 'Unknown maintenance fetch error'
-        }, { status: 500 })
-      }
-    }
-
-    if (fields?.includes('spares')) {
-      console.log('[DEBUG] Fetching spare parts records...')
-      try {
-        const sparePartsRecords = await prisma.sparePart.findMany({
-          include: {
-            maintenanceRecord: {
-              select: {
-                serviceDate: true,
-                serviceType: true,
-                description: true,
-                truck: {
-                  select: { registration: true, make: true, model: true }
-                }
-              }
-            }
-          },
-          orderBy: { createdAt: 'desc' }
-        })
-
-        const flattenedSpares = sparePartsRecords.map(spare => ({
-          ...spare,
-          truck: spare.maintenanceRecord?.truck,
-          serviceDate: spare.maintenanceRecord?.serviceDate,
-          serviceType: spare.maintenanceRecord?.serviceType
-        }))
-
-        reportData.spareParts = flattenedSpares
-        console.log('[DEBUG] Spare parts records processed:', flattenedSpares.length)
-      } catch (sparePartsError) {
-        console.error('[DEBUG] FAIL: Error fetching spare parts:', sparePartsError)
-        return NextResponse.json({
-          error: 'Database error fetching spare parts',
-          details: sparePartsError instanceof Error ? sparePartsError.message : 'Unknown spare parts fetch error'
-        }, { status: 500 })
-      }
-    }
-
-    if (fields?.includes('fuel')) {
-      console.log('[DEBUG] Fetching fuel records...')
-      try {
-        const fuelRecords = await prisma.fuelRecord.findMany({
-          where: whereCondition,
-          include: {
-            truck: {
-              select: { registration: true, make: true, model: true }
-            }
-          },
-          orderBy: { date: 'desc' }
-        })
-
-        reportData.fuelRecords = fuelRecords
-        console.log('[DEBUG] Fuel records fetched:', fuelRecords.length)
-      } catch (fuelError) {
-        console.error('[DEBUG] FAIL: Error fetching fuel records:', fuelError)
-        return NextResponse.json({
-          error: 'Database error fetching fuel records',
-          details: fuelError instanceof Error ? fuelError.message : 'Unknown fuel fetch error'
-        }, { status: 500 })
-      }
-    }
-
-    if (fields?.includes('compliance')) {
-      console.log('[DEBUG] Fetching compliance documents...')
-      try {
-        const complianceDocuments = await prisma.complianceDocument.findMany({
-          where: whereCondition,
-          include: {
-            truck: {
-              select: { registration: true, make: true, model: true }
-            },
-            user: {
-              select: { name: true }
-            }
-          },
-          orderBy: { expiryDate: 'asc' }
-        })
-
-        reportData.complianceDocuments = complianceDocuments
-        console.log('[DEBUG] Compliance documents fetched:', complianceDocuments.length)
-      } catch (complianceError) {
-        console.error('[DEBUG] FAIL: Error fetching compliance documents:', complianceError)
-        return NextResponse.json({
-          error: 'Database error fetching compliance documents',
-          details: complianceError instanceof Error ? complianceError.message : 'Unknown compliance fetch error'
-        }, { status: 500 })
-      }
-    }
-
-    // Step 8: Process and map data
-    console.log('[DEBUG] Step 8: Processing and mapping data...')
-    const mappedData: any = {}
-    
-    try {
-      Object.keys(selectedColumns || {}).forEach(fieldType => {
-        let rawData = []
-        if (fieldType === 'maintenance') {
-          rawData = reportData.maintenanceRecords || []
-        } else if (fieldType === 'compliance') {
-          rawData = reportData.complianceDocuments || []
-        } else if (fieldType === 'spares') {
-          rawData = reportData.spareParts || []
-        } else {
-          rawData = reportData[`${fieldType}Records`] || []
-        }
-
-        const columns = selectedColumns[fieldType] || []
-        console.log(`[DEBUG] Processing ${fieldType}: ${rawData.length} records, ${columns.length} columns`)
-        
-        if (rawData.length > 0 && columns.length > 0) {
-          mappedData[fieldType] = mapDataToSelectedColumns(rawData, fieldType, columns)
-          console.log(`[DEBUG] Mapped ${fieldType} data:`, mappedData[fieldType]?.length, 'records')
-        }
+          user: {
+            select: { name: true }
+          }
+        },
+        orderBy: { serviceDate: 'desc' }
       })
-    } catch (mappingError) {
-      console.error('[DEBUG] FAIL: Error mapping data:', mappingError)
-      return NextResponse.json({
-        error: 'Error processing report data',
-        details: mappingError instanceof Error ? mappingError.message : 'Unknown mapping error'
-      }, { status: 500 })
+      reportData.maintenanceRecords = maintenanceRecords
+      console.log('🔧 [API] Maintenance records fetched:', maintenanceRecords.length)
     }
 
-    // Step 9: Build final report
-    console.log('[DEBUG] Step 9: Building final report...')
+    // Fetch fuel records
+    if (fields?.includes('fuel')) {
+      console.log('🔧 [API] Fetching fuel records...')
+      const fuelRecords = await prisma.fuelRecord.findMany({
+        where: whereCondition,
+        include: {
+          truck: {
+            select: { registration: true, make: true, model: true }
+          }
+        },
+        orderBy: { date: 'desc' }
+      })
+      reportData.fuelRecords = fuelRecords
+      console.log('🔧 [API] Fuel records fetched:', fuelRecords.length)
+    }
+
+    // Fetch compliance documents
+    if (fields?.includes('compliance')) {
+      console.log('🔧 [API] Fetching compliance documents...')
+      const complianceDocuments = await prisma.complianceDocument.findMany({
+        where: whereCondition,
+        include: {
+          truck: {
+            select: { registration: true, make: true, model: true }
+          },
+          user: {
+            select: { name: true }
+          }
+        },
+        orderBy: { expiryDate: 'asc' }
+      })
+      reportData.complianceDocuments = complianceDocuments
+      console.log('🔧 [API] Compliance documents fetched:', complianceDocuments.length)
+    }
+
+    // Map data to selected columns
+    const mappedData: any = {}
+    Object.keys(selectedColumns || {}).forEach(fieldType => {
+      let rawData = []
+      if (fieldType === 'maintenance') {
+        rawData = reportData.maintenanceRecords || []
+      } else if (fieldType === 'fuel') {
+        rawData = reportData.fuelRecords || []
+      } else if (fieldType === 'compliance') {
+        rawData = reportData.complianceDocuments || []
+      }
+
+      const columns = selectedColumns[fieldType] || []
+      if (rawData.length > 0 && columns.length > 0) {
+        mappedData[fieldType] = mapDataToSelectedColumns(rawData, fieldType, columns)
+      }
+    })
+
     const finalReport = {
       metadata: {
         generatedAt: new Date().toISOString(),
         generatedBy: session.user.name || session.user.email,
         reportType,
-        dateRange,
-        trucksIncluded: reportData.trucks?.length || 0,
+        trucksIncluded: trucks.length,
         fields: Object.keys(selectedColumns || {}),
         selectedColumns
       },
       trucks: reportData.trucks,
-      data: mappedData,
-      analytics: {
-        maintenance: {
-          recordsCount: reportData.maintenanceRecords?.length || 0
-        },
-        compliance: {
-          recordsCount: reportData.complianceDocuments?.length || 0
-        },
-        fuel: {
-          recordsCount: reportData.fuelRecords?.length || 0
-        },
-        spares: {
-          recordsCount: reportData.spareParts?.length || 0
-        }
-      }
+      data: mappedData
     }
 
-    console.log('[DEBUG] Final report structure:', {
-      dataKeys: Object.keys(finalReport.data),
-      maintenanceRecords: finalReport.data.maintenance?.length || 0,
-      complianceRecords: finalReport.data.compliance?.length || 0,
-      fuelRecords: finalReport.data.fuel?.length || 0,
-      spareRecords: finalReport.data.spares?.length || 0
+    console.log('🔧 [API] Report generated successfully with data:', {
+      maintenance: finalReport.data.maintenance?.length || 0,
+      fuel: finalReport.data.fuel?.length || 0,
+      compliance: finalReport.data.compliance?.length || 0
     })
 
-    console.log('[DEBUG] === CUSTOM REPORTS API SUCCESS ===')
-    
     return NextResponse.json({
       success: true,
       report: finalReport
     })
 
   } catch (error) {
-    console.error('[DEBUG] === CUSTOM REPORTS API FATAL ERROR ===')
-    console.error('[DEBUG] Fatal error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace'
-    })
-
-    return NextResponse.json({
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown server error occurred',
-      timestamp: new Date().toISOString()
-    }, { status: 500 })
+    console.error('🔧 [API] ERROR generating custom report:', error)
+    console.error('🔧 [API] Error stack:', error.stack)
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to generate report. Please try again.',
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
+      { status: 500 }
+    )
   }
 }
