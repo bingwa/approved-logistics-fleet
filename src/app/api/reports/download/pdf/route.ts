@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
             </div>
             
             <div style="margin-top: 10px; font-size: 9px;">
-                © ${new Date().getFullYear()} Approved Logistics Limited. All rights reserved.
+                © ${new Date().getFullYear()} Fleet Manager System. All rights reserved.
             </div>
         </div>
     </div>
